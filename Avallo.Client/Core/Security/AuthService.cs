@@ -358,6 +358,6 @@ public sealed class AuthService(HttpClient httpClient)
         {
         }
 
-        return "Nao foi possivel concluir a operacao. Tente novamente.";
+        return null;
     }
 }

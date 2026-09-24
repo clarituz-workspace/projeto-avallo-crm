@@ -278,7 +278,7 @@ public static class AuthEndpoints
     {
         var external = await httpContext.AuthenticateAsync(IdentityConstants.ExternalScheme);
         if (!external.Succeeded || external.Principal is null)
-            return Results.Redirect("/login?error=" + Uri.EscapeDataString("Nao foi possivel autenticar com a conta Google. Tente novamente."));
+            return Results.Redirect("/login");
 
         var email = external.Principal.FindFirstValue(ClaimTypes.Email);
         var providerKey = external.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
