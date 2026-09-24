@@ -15,7 +15,7 @@
         <div class="connector-contract-badge"><MudIcon Icon="@Icons.Material.Filled.Extension"  /><span>@Text["Contrato"]</span></div>
     </header>
 
-    <MarketplaceCarousel Connectors="@_available" />
+    <MarketplaceCarousel Connectors="@_visibleConnectors" />
 
     @if (_loading)
     {
@@ -66,16 +66,16 @@
                     <MudText Typo="Typo.h5">@Text["Conectar marketplace"]</MudText>
                     <MudText Typo="Typo.body2">@Text["Escolha um canal para integrar sua operação B2B."]</MudText>
                 </div>
-                <MudChip T="string" Size="Size.Small" Color="Color.Primary">@_available.Length @Text["conectores"]</MudChip>
+                <MudChip T="string" Size="Size.Small" Color="Color.Primary">@_visibleConnectors.Length @Text["conectores"]</MudChip>
             </div>
-            @if (_available.Length == 0)
+            @if (_visibleConnectors.Length == 0)
             {
                 <div class="panel module-empty"><span class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.ExtensionOff"  /></span><div><strong>@Text["Nenhum plugin instalado"]</strong><small>@Text["Publique o DLL de um modulo na pasta configurada em Connectors:PluginPath. O Core permanece inalterado."]</small></div></div>
             }
             else
             {
                 <MudGrid Spacing="3">
-                    @foreach (var connector in _available)
+                    @foreach (var connector in _visibleConnectors)
                     {
                         <MudItem xs="12" sm="6" md="4">
                              <ConnectorCard Name="@connector.DisplayName"
@@ -117,6 +117,7 @@
     [SupplyParameterFromQuery] public string? OAuthError { get; set; }
     [SupplyParameterFromQuery] public string? OAuthMessage { get; set; }
     private ConnectorDescriptorModel[] _available = [];
+    private ConnectorDescriptorModel[] _visibleConnectors => _available.Where(c => c.Name == "mercado-livre").ToArray();
     private MarketplaceConnectionModel[] _connections = [];
     private ConnectorDescriptorModel? _selected;
     private readonly Dictionary<string, string> _credentials = new(StringComparer.OrdinalIgnoreCase);
