@@ -21,21 +21,20 @@ COPY build-assets/blazor.web.js /tmp/blazor.web.js
 # Avallo.Web/connectors e eles seguem para a imagem como plugin.
 # O ls final e proposital - falha o build se nenhum plugin foi produzido.
 RUN dotnet build Avallo.Connector.MercadoLivre/Avallo.Connector.MercadoLivre.csproj \
-    --configuration Release \
-    --no-restore
+    --configuration Release
 RUN dotnet build Avallo.Connector.Shopee/Avallo.Connector.Shopee.csproj \
-    --configuration Release \
-    --no-restore
+    --configuration Release
 RUN dotnet build Avallo.Connector.Amazon/Avallo.Connector.Amazon.csproj \
-    --configuration Release \
-    --no-restore
+    --configuration Release
 RUN dotnet build Avallo.Web/Avallo.Web.csproj \
-    --configuration Release \
-    --no-restore
+    --configuration Release
+
+RUN mkdir -p Avallo.Web/connectors \
+    && cp Avallo.Connector.*/bin/Release/net10.0/Avallo.Connector.*.dll Avallo.Web/connectors/ \
+    && cp Avallo.Connector.*/bin/Release/net10.0/Avallo.Connector.*.deps.json Avallo.Web/connectors/
 
 RUN dotnet publish Avallo.Web/Avallo.Web.csproj \
     --configuration Release \
-    --no-restore \
     --no-build \
     --output /app/publish \
     && cp /tmp/blazor.web.js /app/publish/wwwroot/_framework/blazor.web.js \
