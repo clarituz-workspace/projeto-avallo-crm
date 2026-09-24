@@ -1,0 +1,92 @@
+name: ci-cd
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  build-test:
+    name: Bazel build & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - uses: bazel-contrib/setup-bazel@0.9.0
+        with:
+          bazelisk-cache: true
+          disk-cache: true
+          repository-cache: true
+
+      - name: Restore NuGet cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.*') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: bazel run //:build
+        run: bazel run //:build --config=ci
+
+      - name: bazel test //:test
+        run: bazel test //:test --config=ci
+
+      - name: bazel run //:publish
+        run: bazel run //:publish --config=ci
+
+  deploy:
+    name: Deploy to Railway
+    needs: build-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE }}
+        # With a project token, `railway up` resolves the project from the
+        # token itself. --service is only needed for multi-service projects.
+        run: |
+          if [ -n "$RAILWAY_SERVICE" ]; then
+            railway up --service "$RAILWAY_SERVICE" --detach
+          else
+            railway up --detach
+          fi
+
+      - name: Health gate
+        if: vars.RAILWAY_PUBLIC_DOMAIN != ''
+        env:
+          APP_URL: ${{ vars.RAILWAY_PUBLIC_DOMAIN }}
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://${APP_URL}/health" || true)
+            if [ "$code" = "200" ]; then
+              echo "Deploy healthy"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Health check failed after deploy" >&2
+          exit 1

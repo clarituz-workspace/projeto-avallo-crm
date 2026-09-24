@@ -1,0 +1,42 @@
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "Avallo.slnx",
+    "Directory.Build.props",
+    "Directory.Build.targets",
+])
+
+filegroup(
+    name = "srcs",
+    srcs = glob([
+        "Avallo.*/**/*.cs",
+        "Avallo.*/**/*.csproj",
+        "Avallo.*/**/*.razor",
+        "Avallo.*/**/*.html",
+        "Avallo.*/**/*.json",
+        "Avallo.*/**/*.xml",
+        "*.slnx",
+        "Directory.Build.*",
+    ]),
+)
+
+sh_binary(
+    name = "build",
+    srcs = ["scripts/bazel_build.sh"],
+    data = [":srcs"],
+    tags = ["local"],
+)
+
+sh_test(
+    name = "test",
+    srcs = ["scripts/bazel_test.sh"],
+    data = [":srcs"],
+    tags = ["local"],
+)
+
+sh_binary(
+    name = "publish",
+    srcs = ["scripts/bazel_publish.sh"],
+    data = [":srcs"],
+    tags = ["local"],
+)

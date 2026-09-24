@@ -1,0 +1,27 @@
+# Bazel config para Avallo CRM
+# Ativa Bzlmod para gerenciamento moderno de dependências
+common --enable_bzlmod
+
+# Build
+build --show_timestamps
+build --verbose_failures
+build --announce_rc
+
+# Test
+
+test --test_output=errors
+test --test_verbose_timeout_warnings
+
+# CI profile
+build:ci --color=no
+build:ci --curses=no
+build:ci --show_timestamps
+build:ci --announce_rc
+
+test:ci --color=no
+test:ci --curses=no
+test:ci --test_output=errors
+test:ci --test_verbose_timeout_warnings
+
+# .NET wrappers rodam localmente por nao serem regras nativas do rules_dotnet
+build:dotnet --local_test_jobs=1
