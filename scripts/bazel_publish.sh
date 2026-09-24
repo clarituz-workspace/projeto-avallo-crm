@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "${BUILD_WORKSPACE_DIRECTORY}"
+if [ -n "${BUILD_WORKSPACE_DIRECTORY:-}" ]; then
+  WORKSPACE_DIR="${BUILD_WORKSPACE_DIRECTORY}"
+elif [ -n "${TEST_SRCDIR:-}" ] && [ -n "${TEST_WORKSPACE:-}" ]; then
+  WORKSPACE_DIR="${TEST_SRCDIR}/${TEST_WORKSPACE}"
+else
+  echo "Nao foi possivel determinar o diretorio do workspace" >&2
+  exit 1
+fi
 
-OUT="${BUILD_WORKSPACE_DIRECTORY}/bazel-bin/publish"
+cd "${WORKSPACE_DIR}"
+
+OUT="${WORKSPACE_DIR}/bazel-bin/publish"
 rm -rf "${OUT}"
 
 dotnet publish Avallo.Web/Avallo.Web.csproj \
