@@ -94,53 +94,6 @@
             }
         </section>
 
-        <section class="connector-section">
-            <div class="section-heading"><div><MudText Typo="Typo.h5">@Text["Modulos instalados"]</MudText><MudText Typo="Typo.body2">@Text["Plugins descobertos no startup pelo contrato padronizado."]</MudText></div><MudChip T="string" Size="Size.Small">@_available.Length @Text["disponiveis"]</MudChip></div>
-            @if (_available.Length == 0)
-            {
-                <div class="panel module-empty"><span class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.ExtensionOff"  /></span><div><strong>@Text["Nenhum plugin instalado"]</strong><small>@Text["Publique o DLL de um modulo na pasta configurada em Connectors:PluginPath. O Core permanece inalterado."]</small></div></div>
-            }
-            else
-            {
-                <div class="module-grid">
-                    @foreach (var connector in _available)
-                    {
-                        <article class="panel module-card @(connector.IsConfigured ? string.Empty : "connector-development")">
-                            <div class="connection-logo muted">
-                                @if (connector.Presentation?.LogoUrl is { Length: > 0 } logo)
-                                {
-                                    <img src="@logo" alt="@connector.DisplayName" />
-                                }
-                                else
-                                {
-                                    @Initials(connector.DisplayName)
-                                }
-                            </div>
-                            <div>
-                                <MudText Typo="Typo.h6">@connector.DisplayName</MudText>
-                                <MudText Typo="Typo.body2">@connector.Name &middot; v@connector.Version @if (connector.UsesOAuth) { <span>&middot; OAuth 2.0</span> }</MudText>
-                                @if (!connector.IsConfigured && connector.ConfigurationHint is { Length: > 0 } hint)
-                                {
-                                    <small class="development-note">@hint</small>
-                                }
-                            </div>
-                            <MudSpacer />
-                            @if (!connector.IsConfigured)
-                            {
-                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="development-chip"><MudIcon Icon="@Icons.Material.Filled.LockClock"  />@Text["Pendente"]</MudChip>
-                            }
-                            else if (CanWrite)
-                            {
-                                <MudTooltip Text="@Text["Iniciar conexao com o marketplace"]" Placement="Placement.Bottom">
-                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="@(_oauthConnector == connector.Name)" OnClick="() => ConnectAsync(connector)">@(_oauthConnector == connector.Name ? Text["Redirecionando..."] : Text["Conectar"])</MudButton>
-                                </MudTooltip>
-                            }
-                        </article>
-                    }
-                </div>
-            }
-        </section>
-
         @if (_selected is not null)
         {
             <div class="connector-modal-backdrop" @onclick="CloseConnector">

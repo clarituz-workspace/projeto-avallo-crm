@@ -1620,9 +1620,9 @@ h5,
 }
 
 .connector-banner-content img {
-    width: 220px;
-    height: 78px;
-    max-width: 34%;
+    width: 280px;
+    height: 120px;
+    max-width: 40%;
     object-fit: contain;
 }
 
