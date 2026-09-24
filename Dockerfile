@@ -20,9 +20,14 @@ COPY build-assets/blazor.web.js /tmp/blazor.web.js
 # Os conectores nao entram no assembly do Core: o build os deposita em
 # Avallo.Web/connectors e eles seguem para a imagem como plugin.
 # O ls final e proposital - falha o build se nenhum plugin foi produzido.
+RUN dotnet build Avallo.Web/Avallo.Web.csproj \
+    --configuration Release \
+    --no-restore
+
 RUN dotnet publish Avallo.Web/Avallo.Web.csproj \
     --configuration Release \
     --no-restore \
+    --no-build \
     --output /app/publish \
     && cp /tmp/blazor.web.js /app/publish/wwwroot/_framework/blazor.web.js \
     && test -f /app/publish/wwwroot/_framework/blazor.web.js \
