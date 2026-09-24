@@ -13,9 +13,9 @@ public sealed class GeoLocationService
         try
         {
             var response = await SharedHttp.GetFromJsonAsync<IpApiResult>(
-                "https://ipwho.is/", cancellationToken);
+                "https://ipapi.co/json/", cancellationToken);
 
-            if (response is null or { Success: false })
+            if (response is null)
                 return null;
 
             return new GeoLocationModel
@@ -24,7 +24,7 @@ public sealed class GeoLocationService
                 City = response.City ?? string.Empty,
                 Region = response.Region ?? string.Empty,
                 CountryName = response.CountryName ?? string.Empty,
-                Timezone = response.Timezone?.Id ?? string.Empty,
+                Timezone = response.Timezone ?? string.Empty,
                 Continent = response.Continent ?? string.Empty
             };
         }
@@ -45,22 +45,13 @@ public sealed class GeoLocationService
         [JsonPropertyName("region")]
         public string? Region { get; set; }
 
-        [JsonPropertyName("country")]
+        [JsonPropertyName("country_name")]
         public string? CountryName { get; set; }
 
         [JsonPropertyName("continent")]
         public string? Continent { get; set; }
 
-        [JsonPropertyName("success")]
-        public bool Success { get; set; }
-
         [JsonPropertyName("timezone")]
-        public TimezoneResult? Timezone { get; set; }
-    }
-
-    private sealed class TimezoneResult
-    {
-        [JsonPropertyName("id")]
-        public string? Id { get; set; }
+        public string? Timezone { get; set; }
     }
 }
