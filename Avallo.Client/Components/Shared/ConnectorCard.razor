@@ -1,0 +1,72 @@
+@inject AppLocalizer Text
+
+<MudCard Class="connector-card" Elevation="0">
+    <MudCardMedia Image="@Image" Class="@($"connector-card-media {ConnectorName}")" Height="180" />
+    <MudCardContent Class="connector-card-content">
+        <div class="connector-card-heading">
+            <MudText Typo="Typo.h5">@Name</MudText>
+            <MudChip T="string" Size="Size.Small" Color="@StatusColor">@Text[StatusLabel]</MudChip>
+        </div>
+        <MudText Typo="Typo.body2" Class="connector-card-description">@Text[Description]</MudText>
+        <div class="connector-card-details">
+            <span><small>@Text["Conector"]</small><strong>@ConnectorName</strong></span>
+            <span><small>@Text["ID da conta"]</small><strong>@(Connection?.ExternalAccountId ?? "-")</strong></span>
+            <span><small>@Text["Última sincronização"]</small><strong>@Text[LastSyncLabel]</strong></span>
+            <span><small>@Text["Token válido até"]</small><strong>@TokenExpiryLabel</strong></span>
+        </div>
+    </MudCardContent>
+    <MudCardActions Class="connector-card-actions">
+        @if (Connection is null)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth OnClick="OnConnect">
+                @Text["Conectar"]
+            </MudButton>
+        }
+        else
+        {
+            <div class="connector-card-action-row">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSync || Syncing)" OnClick="SyncConnection">
+                    @(Syncing ? Text["Sincronizando..."] : Text["Sincronizar"])
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(!CanSync || Syncing)" OnClick="DisconnectConnection">
+                    @Text["Desconectar"]
+                </MudButton>
+            </div>
+        }
+    </MudCardActions>
+</MudCard>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Image { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Description { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string ConnectorName { get; set; } = string.Empty;
+    [Parameter] public MarketplaceConnectionModel? Connection { get; set; }
+    [Parameter] public bool CanSync { get; set; }
+    [Parameter] public bool Syncing { get; set; }
+    [Parameter] public EventCallback OnConnect { get; set; }
+    [Parameter] public EventCallback<MarketplaceConnectionModel> OnSync { get; set; }
+    [Parameter] public EventCallback<MarketplaceConnectionModel> OnDisconnect { get; set; }
+
+    private string StatusLabel => Connection?.Status switch
+    {
+        "Connected" or "Active" => "Conectado",
+        "Error" => "Erro",
+        null => "Não conectado",
+        _ => Connection.Status
+    };
+
+    private Color StatusColor => Connection?.Status switch
+    {
+        "Connected" or "Active" => Color.Success,
+        "Error" => Color.Error,
+        null => Color.Default,
+        _ => Color.Warning
+    };
+
+    private string LastSyncLabel => Connection?.LastSyncAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "Nunca";
+    private string TokenExpiryLabel => Connection?.TokenExpiresAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-";
+
+    private Task SyncConnection() => Connection is null ? Task.CompletedTask : OnSync.InvokeAsync(Connection);
+    private Task DisconnectConnection() => Connection is null ? Task.CompletedTask : OnDisconnect.InvokeAsync(Connection);
+}

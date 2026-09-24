@@ -1,0 +1,371 @@
+@page "/dashboard"
+@rendermode InteractiveWebAssembly
+@using System.Globalization
+@inject AuthService Auth
+@inject ReportService Reports
+@inject ConnectorService Connectors
+@inject AppLocalizer Text
+@inject ISnackbar Snackbar
+@inject IJSRuntime JavaScript
+
+<PageTitle>@Text["Painel e relatorios"] | Avallo</PageTitle>
+
+<AppShellLayout PageContext="@Text["Painel e relatorios"]">
+<div class="page-container report-page">
+    <header class="page-header report-header">
+        <div>
+            <MudText Typo="Typo.overline" Color="Color.Primary">@Text["Visao consolidada"]</MudText>
+            <MudText Typo="Typo.h3">@Text["Painel financeiro"]</MudText>
+            <MudText Typo="Typo.body1">@Text["Todos os marketplaces conectados em uma unica leitura."]</MudText>
+        </div>
+        <MudTooltip Text="@Text["Exportar dados financeiros em varios formatos"]" Placement="Placement.Bottom">
+            <MudMenu Label="@(_exporting ? Text["Gerando arquivo..."] : Text["Exportar relatorio"])" Variant="Variant.Outlined"
+                     Disabled="_exporting" Class="export-menu">
+                   <MudMenuItem OnClick="ExportPdfAsync"><MudIcon Icon="@Icons.Material.Filled.PictureAsPdf"  />@Text["PDF para contador"]</MudMenuItem>
+                   <MudMenuItem OnClick="ExportExcelAsync"><MudIcon Icon="@Icons.Material.Filled.TableView"  />@Text["Excel por marketplace"]</MudMenuItem>
+                   <MudMenuItem OnClick="ExportCsvAsync"><MudIcon Icon="@Icons.Material.Filled.DataObject"  />@Text["CSV para integracao"]</MudMenuItem>
+                <MudDivider />
+                   <MudMenuItem OnClick="ExportPlatformPdfAsync"><MudIcon Icon="@Icons.Material.Filled.AccountTree"  />@Text["PDF separado por plataforma"]</MudMenuItem>
+            </MudMenu>
+        </MudTooltip>
+    </header>
+
+    <section class="filter-panel panel">
+        <div class="filter-title"><MudIcon Icon="@Icons.Material.Filled.Tune"  /><div><strong>@Text["Filtros"]</strong><small>@Text["Refine os indicadores e lancamentos"]</small></div></div>
+        <div class="filter-grid">
+            <MudDateRangePicker @bind-DateRange="Period" Label="@Text["Periodo"]" Variant="Variant.Outlined"
+                                DateFormat="dd/MM/yyyy" Clearable Margin="Margin.Dense" />
+            <MudSelect T="string" @bind-Value="Filter.Platform" Label="@Text["Conector"]" Variant="Variant.Outlined" Clearable Margin="Margin.Dense">
+                @foreach (var connectorName in ActiveConnectorNames) { <MudSelectItem Value="@connectorName">@ConnectorDisplayName(connectorName)</MudSelectItem> }
+            </MudSelect>
+            <MudSelect T="string" @bind-Value="Filter.PaymentMethod" Label="@Text["Forma de pagamento"]" Variant="Variant.Outlined" Clearable Margin="Margin.Dense">
+                @foreach (var option in Options.PaymentMethods) { <MudSelectItem Value="@option">@option</MudSelectItem> }
+            </MudSelect>
+            <MudSelect T="string" @bind-Value="Filter.Status" Label="@Text["Status"]" Variant="Variant.Outlined" Clearable Margin="Margin.Dense">
+                @foreach (var option in Options.Statuses) { <MudSelectItem Value="@option">@option</MudSelectItem> }
+            </MudSelect>
+            <MudTooltip Text="@Text["Filtrar indicadores pelo periodo e conector selecionados"]" Placement="Placement.Bottom">
+                 <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_loading" OnClick="ApplyFiltersAsync"><MudIcon Icon="@Icons.Material.Filled.FilterAlt"  />@Text["Aplicar"]</MudButton>
+            </MudTooltip>
+        </div>
+    </section>
+
+    <MarketplaceCarousel Connectors="@_availableConnectors" />
+
+    <section class="panel online-connectors-panel">
+        <div class="online-connectors-heading">
+            <div>
+                <div class="online-connectors-title">
+                    <MudText Typo="Typo.h5">@Text["Conectores em operacao"]</MudText>
+                    <span class="live-indicator"><i></i> @Text["Ao vivo"]</span>
+                </div>
+                <MudText Typo="Typo.body2">@Text["Conexoes online que alimentam os indicadores financeiros."]</MudText>
+            </div>
+            <div class="online-connectors-total">
+                <strong>@ActiveConnections.Length</strong>
+                <span>@Text[ActiveConnections.Length == 1 ? "conector ativo" : "conectores ativos"]</span>
+            </div>
+        </div>
+
+        @if (_loadingConnectors)
+        {
+            <div class="mt-4">
+                <MudSkeleton Width="100%" Height="40px" Class="mb-2" />
+                <MudSkeleton Width="100%" Height="30px" Class="mb-2" />
+                <MudSkeleton Width="100%" Height="30px" />
+            </div>
+        }
+        else if (ActiveConnections.Length == 0)
+        {
+            <div class="online-connectors-empty">
+                 <MudIcon Icon="@Icons.Material.Filled.CloudOff"  />
+                <div><strong>@Text["Nenhum conector online"]</strong><small>@Text["Ative uma conexao para acompanhar a operacao neste painel."]</small></div>
+            </div>
+        }
+        else
+        {
+            <AppQuickGrid TItem="MarketplaceConnectionModel" Items="@_activeConnections" ItemKey="@((MarketplaceConnectionModel item) => item.Id)" PageSize="10" Class="online-connectors-table">
+                <Columns>
+                    <AppTemplateColumn TItem="MarketplaceConnectionModel" Title="@Text["Conector"]" Sortable="true" SortBy="@(GridSort<MarketplaceConnectionModel>.ByAscending(x => x.ConnectorName))">
+                        <div class="online-connector-name"><span>@if (ConnectorLogo(context.ConnectorName) is { Length: > 0 } logo) { <img src="@logo" alt="@ConnectorDisplayName(context.ConnectorName)" /> } else { @Initials(ConnectorDisplayName(context.ConnectorName)) }</span><div><strong>@ConnectorDisplayName(context.ConnectorName)</strong><small>@context.ConnectorName</small></div></div>
+                    </AppTemplateColumn>
+                    <AppTemplateColumn TItem="MarketplaceConnectionModel" Title="@Text["Conta em operacao"]" Sortable="true" SortBy="@(GridSort<MarketplaceConnectionModel>.ByAscending(x => x.AccountDisplayName))"><strong>@(context.AccountDisplayName ?? context.ExternalAccountId)</strong><small class="table-secondary">ID @context.ExternalAccountId</small></AppTemplateColumn>
+                    <AppTemplateColumn TItem="MarketplaceConnectionModel" Title="@Text["Ultima sincronizacao"]" Sortable="true" SortBy="@(GridSort<MarketplaceConnectionModel>.ByAscending(x => x.LastSyncAt))"><strong>@LastSync(context)</strong><small class="table-secondary">@SyncHealth(context)</small></AppTemplateColumn>
+                    <AppTemplateColumn TItem="MarketplaceConnectionModel" Title="@Text["Acesso valido ate"]" Sortable="true" SortBy="@(GridSort<MarketplaceConnectionModel>.ByAscending(x => x.TokenExpiresAt))"><strong>@context.TokenExpiresAt.ToLocalTime().ToString("dd/MM/yyyy")</strong><small class="table-secondary">@context.TokenExpiresAt.ToLocalTime().ToString("HH:mm")</small></AppTemplateColumn>
+                    <AppTemplateColumn TItem="MarketplaceConnectionModel" Title="@Text["Status"]"><span class="online-status"><i></i> @Text["Online"]</span></AppTemplateColumn>
+                </Columns>
+            </AppQuickGrid>
+        }
+    </section>
+
+    <section class="finance-card-grid">
+        @if (_loading)
+        {
+            @for (int i = 0; i < 4; i++)
+            {
+                <article class="finance-card">
+                    <MudSkeleton SkeletonType="SkeletonType.Circle" Width="40px" Height="40px" Class="mr-3" />
+                    <div style="flex-grow: 1;">
+                        <MudSkeleton Width="60px" Height="15px" Class="mb-2" />
+                        <MudSkeleton Width="120px" Height="28px" Class="mb-1" />
+                        <MudSkeleton Width="80px" Height="15px" />
+                    </div>
+                </article>
+            }
+        }
+        else
+        {
+            <MudTooltip Text="@Text["Valor total das vendas no periodo selecionado"]" Placement="Placement.Top">
+                <article class="finance-card"><span class="finance-card-icon billed"><MudIcon Icon="@Icons.Material.Filled.ReceiptLong"  /></span><div><MudText Typo="Typo.caption">@Text["FATURADO"]</MudText><MudText Typo="Typo.h4">@Money(Data.Summary.Billed)</MudText><small>@Text["Vendas no periodo"]</small></div></article>
+            </MudTooltip>
+            <MudTooltip Text="@Text["Valores ja liquidados e creditados na conta"]" Placement="Placement.Top">
+                <article class="finance-card"><span class="finance-card-icon received"><MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet"  /></span><div><MudText Typo="Typo.caption">@Text["RECEBIDO"]</MudText><MudText Typo="Typo.h4">@Money(Data.Summary.Received)</MudText><small>@Text["Valores liquidados"]</small></div></article>
+            </MudTooltip>
+            <MudTooltip Text="@Text["Custos cobrados pelos canais de venda"]" Placement="Placement.Top">
+                <article class="finance-card"><span class="finance-card-icon fees"><MudIcon Icon="@Icons.Material.Filled.Percent"  /></span><div><MudText Typo="Typo.caption">@Text["TAXAS"]</MudText><MudText Typo="Typo.h4">@Money(Data.Summary.Fees)</MudText><small>@Text["Custos dos canais"]</small></div></article>
+            </MudTooltip>
+            <MudTooltip Text="@Text["Saldo estimado a ser creditado"]" Placement="Placement.Top">
+                <article class="finance-card"><span class="finance-card-icon receivable"><MudIcon Icon="@Icons.Material.Filled.Schedule"  /></span><div><MudText Typo="Typo.caption">@Text["A RECEBER"]</MudText><MudText Typo="Typo.h4">@Money(Data.Summary.Receivable)</MudText><small>@Text["Saldo futuro estimado"]</small></div></article>
+            </MudTooltip>
+        }
+    </section>
+
+    <section class="report-chart-grid">
+        <article class="panel chart-panel">
+            <div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Evolucao mensal"]</MudText><MudText Typo="Typo.body2">@Text["Faturamento e recebimentos ao longo do tempo."]</MudText></div><span class="legend-note">@Text["Mensal"]</span></div>
+            @if (_loading)
+            {
+                <div class="d-flex align-end justify-space-between px-6 pt-10" style="height: 280px; width: 100%;">
+                    <MudSkeleton Width="25px" Height="120px" />
+                    <MudSkeleton Width="25px" Height="180px" />
+                    <MudSkeleton Width="25px" Height="140px" />
+                    <MudSkeleton Width="25px" Height="220px" />
+                    <MudSkeleton Width="25px" Height="90px" />
+                    <MudSkeleton Width="25px" Height="160px" />
+                    <MudSkeleton Width="25px" Height="200px" />
+                </div>
+            }
+            else if (Data.MonthlyEvolution.Length == 0)
+            {
+                 <EmptyReport Icon="@Icons.Material.Filled.ShowChart" Text="@Text["Ainda nao ha dados no periodo selecionado."]" />
+            }
+            else
+            {
+                <MudChart ChartType="ChartType.Line" ChartSeries="MonthlySeries" ChartLabels="MonthlyLabels" Height="280px" Width="100%" />
+            }
+        </article>
+        <article class="panel chart-panel">
+            <div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Comparativo por plataforma"]</MudText><MudText Typo="Typo.body2">@Text["Performance consolidada de cada canal."]</MudText></div></div>
+            @if (_loading)
+            {
+                <div class="d-flex align-end justify-space-between px-6 pt-10" style="height: 280px; width: 100%;">
+                    <MudSkeleton Width="40px" Height="150px" />
+                    <MudSkeleton Width="40px" Height="220px" />
+                    <MudSkeleton Width="40px" Height="100px" />
+                </div>
+            }
+            else if (Data.PlatformComparison.Length == 0)
+            {
+                 <EmptyReport Icon="@Icons.Material.Filled.BarChart" Text="@Text["Conecte marketplaces para visualizar a comparacao."]" />
+            }
+            else
+            {
+                <MudChart ChartType="ChartType.Bar" ChartSeries="PlatformSeries" ChartLabels="PlatformLabels" Height="280px" Width="100%" />
+            }
+        </article>
+    </section>
+
+    <section class="panel entries-panel">
+        <div class="entries-toolbar">
+            <div><MudText Typo="Typo.h5">@Text["Lancamentos"]</MudText><MudText Typo="Typo.body2">@Text["Movimentacoes financeiras de todos os canais."]</MudText></div>
+            <MudTextField @bind-Value="Filter.Search" Placeholder="@Text["Buscar descricao ou ID..."]" Variant="Variant.Outlined"
+                            Margin="Margin.Dense" Adornment="Adornment.Start"
+                          Immediate DebounceInterval="450" OnDebounceIntervalElapsed="SearchAsync" Class="entry-search" />
+        </div>
+        <AppQuickGrid TItem="EntryModel" @ref="_entriesGrid" ItemsProvider="LoadEntriesAsync" ItemKey="@((EntryModel item) => item.Id)" PageSize="25" Class="entries-table">
+            <Columns>
+                <AppTemplateColumn TItem="EntryModel" Title="@Text["Data"]" Sortable="true" SortBy="@(GridSort<EntryModel>.ByDescending(x => x.OccurredAt))"><strong>@context.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy")</strong><small class="table-secondary">@context.OccurredAt.ToLocalTime().ToString("HH:mm")</small></AppTemplateColumn>
+                <AppTemplateColumn TItem="EntryModel" Title="@Text["Lancamento"]" Sortable="true" SortBy="@(GridSort<EntryModel>.ByAscending(x => x.Description))"><strong>@context.Description</strong><small class="table-secondary">#@context.ExternalId</small></AppTemplateColumn>
+                <AppTemplateColumn TItem="EntryModel" Title="@Text["Plataforma"]" Sortable="true" SortBy="@(GridSort<EntryModel>.ByAscending(x => x.Marketplace))"><span class="platform-pill">@context.Marketplace</span></AppTemplateColumn>
+                <AppPropertyColumn TItem="EntryModel" TProperty="string" Property="@(x => x.PaymentMethod)" Title="@Text["Pagamento"]" />
+                <AppTemplateColumn TItem="EntryModel" Title="@Text["Status"]" Sortable="true" SortBy="@(GridSort<EntryModel>.ByAscending(x => x.Status))"><MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@StatusColor(context.Status)">@context.Status</MudChip></AppTemplateColumn>
+                 <AppTemplateColumn TItem="EntryModel" Title="@Text["Faturado"]" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right" Sortable="true" SortBy="@(GridSort<EntryModel>.ByAscending(x => x.GrossAmount))"><span class="money-cell">@Money(context.GrossAmount)</span></AppTemplateColumn>
+                 <AppTemplateColumn TItem="EntryModel" Title="@Text["Taxas"]" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right"><span class="fee-cell">@Money(context.FeeAmount)</span></AppTemplateColumn>
+                 <AppTemplateColumn TItem="EntryModel" Title="@Text["A receber"]" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right"><span class="money-cell">@Money(context.ReceivableAmount)</span></AppTemplateColumn>
+            </Columns>
+              <EmptyContent><EmptyReport Icon="@Icons.Material.Filled.ReceiptLong" Text="@Text["Nenhum lancamento encontrado para os filtros aplicados."]" Compact /></EmptyContent>
+        </AppQuickGrid>
+    </section>
+</div>
+</AppShellLayout>
+
+@code {
+    private readonly ReportFilterModel Filter = new();
+    private ReportOptionsModel Options = new([], [], []);
+    private DashboardReportModel Data = EmptyData;
+    private ConnectorDescriptorModel[] _availableConnectors = [];
+    private MarketplaceConnectionModel[] _connections = [];
+    private IQueryable<MarketplaceConnectionModel> _activeConnections = Array.Empty<MarketplaceConnectionModel>().AsQueryable();
+    private AppQuickGrid<EntryModel>? _entriesGrid;
+    private readonly Dictionary<int, string> _entryCursors = [];
+    private bool _loading = true;
+    private bool _loadingConnectors = true;
+    private bool _exporting;
+
+    private static DashboardReportModel EmptyData => new(new ReportSummaryModel(0, 0, 0, 0), [], []);
+    private DateRange Period
+    {
+        get => new(Filter.From, Filter.To);
+        set { Filter.From = value.Start; Filter.To = value.End; }
+    }
+
+    private List<ChartSeries<double>> MonthlySeries =>
+    [
+        new() { Name = Text["Faturado"], Data = Data.MonthlyEvolution.Select(x => (double)x.Billed).ToArray() },
+        new() { Name = Text["Recebido"], Data = Data.MonthlyEvolution.Select(x => (double)x.Received).ToArray() }
+    ];
+    private string[] MonthlyLabels => Data.MonthlyEvolution.Select(x =>
+        DateTime.TryParseExact(x.Month, "yyyy-MM", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+            ? date.ToString("MMM/yy", CultureInfo.CurrentCulture) : x.Month).ToArray();
+    private List<ChartSeries<double>> PlatformSeries =>
+    [
+        new() { Name = Text["Faturado"], Data = Data.PlatformComparison.Select(x => (double)x.Billed).ToArray() },
+        new() { Name = Text["Recebido"], Data = Data.PlatformComparison.Select(x => (double)x.Received).ToArray() }
+    ];
+    private string[] PlatformLabels => Data.PlatformComparison.Select(x => x.Platform).ToArray();
+    private MarketplaceConnectionModel[] ActiveConnections => _activeConnections.ToArray();
+    private string[] ActiveConnectorNames => ActiveConnections
+        .Select(x => x.ConnectorName)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(ConnectorDisplayName)
+        .ToArray();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!OperatingSystem.IsBrowser())
+            return;
+        var optionsTask = Reports.GetOptionsAsync();
+        var connectorsTask = LoadConnectorsAsync();
+        var dashboardTask = LoadDashboardAsync();
+        var options = await optionsTask;
+        if (options.Succeeded) Options = options.Value!;
+        await Task.WhenAll(connectorsTask, dashboardTask);
+    }
+
+    private async Task LoadConnectorsAsync()
+    {
+        _loadingConnectors = true;
+        var availableTask = Connectors.GetAvailableAsync();
+        var connectionsTask = Connectors.GetConnectionsAsync();
+        await Task.WhenAll(availableTask, connectionsTask);
+        var available = await availableTask;
+        var connections = await connectionsTask;
+        if (available.Succeeded) _availableConnectors = available.Value!;
+        if (connections.Succeeded)
+        {
+            _connections = connections.Value!;
+            _activeConnections = _connections
+                .Where(x => string.Equals(x.Status, "Active", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(x => ConnectorDisplayName(x.ConnectorName))
+                .ThenBy(x => x.AccountDisplayName ?? x.ExternalAccountId)
+                .AsQueryable();
+        }
+        else Snackbar.Add(connections.Error!, Severity.Error);
+        _loadingConnectors = false;
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        Filter.From = Period.Start;
+        Filter.To = Period.End;
+        await LoadDashboardAsync();
+        _entryCursors.Clear();
+        if (_entriesGrid is not null) await _entriesGrid.ResetAsync();
+    }
+
+    private async Task LoadDashboardAsync()
+    {
+        _loading = true;
+        var result = await Reports.GetDashboardAsync(Filter);
+        _loading = false;
+        if (result.Succeeded) Data = result.Value!;
+        else { Data = EmptyData; Snackbar.Add(result.Error!, Severity.Error); }
+    }
+
+    private async ValueTask<GridItemsProviderResult<EntryModel>> LoadEntriesAsync(GridItemsProviderRequest<EntryModel> request)
+    {
+        var pageSize = request.Count ?? 25;
+        var page = request.StartIndex / pageSize + 1;
+        var sort = request.GetSortByProperties().FirstOrDefault();
+        var sortBy = sort.PropertyName switch
+        {
+            nameof(EntryModel.Description) => "description",
+            nameof(EntryModel.Marketplace) => "platform",
+            nameof(EntryModel.Status) => "status",
+            nameof(EntryModel.GrossAmount) => "amount",
+            _ => "date"
+        };
+        var descending = !request.SortByAscending;
+        var cursor = sortBy == "date" && page > 1 && _entryCursors.TryGetValue(page - 1, out var previousCursor)
+            ? previousCursor : null;
+        var result = await Reports.GetEntriesAsync(Filter, page, pageSize, sortBy, descending,
+            request.CancellationToken, cursor);
+        if (result.Succeeded)
+        {
+            if (page == 1) _entryCursors.Clear();
+            if (result.Value!.NextCursor is not null) _entryCursors[page] = result.Value.NextCursor;
+            return GridItemsProviderResult.From(result.Value!.Items, result.Value.Total);
+        }
+        Snackbar.Add(result.Error!, Severity.Error);
+        return GridItemsProviderResult.From(Array.Empty<EntryModel>(), 0);
+    }
+
+    private async Task SearchAsync(string _) { _entryCursors.Clear(); if (_entriesGrid is not null) await _entriesGrid.ResetAsync(); }
+    private Task ExportPdfAsync() => ExportAsync("pdf", "consolidated");
+    private Task ExportExcelAsync() => ExportAsync("xlsx", "platform");
+    private Task ExportCsvAsync() => ExportAsync("csv", "consolidated");
+    private Task ExportPlatformPdfAsync() => ExportAsync("pdf", "platform");
+
+    private async Task ExportAsync(string format, string mode)
+    {
+        _exporting = true;
+        var result = await Reports.ExportAsync(Filter, format, mode);
+        _exporting = false;
+        if (!result.Succeeded)
+        {
+            Snackbar.Add(result.Error!, Severity.Error);
+            return;
+        }
+
+        var file = result.Value!;
+        await JavaScript.InvokeVoidAsync(
+            "nucleo.downloadFile",
+            file.FileName,
+            file.ContentType,
+            Convert.ToBase64String(file.Content));
+        Snackbar.Add(Text["Relatorio gerado com sucesso."], Severity.Success);
+    }
+
+    private static string Money(decimal value) => value.ToString("C", CultureInfo.CurrentCulture);
+    private string ConnectorDisplayName(string connectorName) =>
+        _availableConnectors.FirstOrDefault(x => string.Equals(x.Name, connectorName, StringComparison.OrdinalIgnoreCase))?.DisplayName
+        ?? connectorName;
+    private static string Initials(string value) => string.Concat(value.Split(['-', ' ', '_'], StringSplitOptions.RemoveEmptyEntries).Take(2).Select(x => char.ToUpperInvariant(x[0])));
+    private string? ConnectorLogo(string connectorName) =>
+        _availableConnectors.FirstOrDefault(x => string.Equals(x.Name, connectorName, StringComparison.OrdinalIgnoreCase))?.Presentation?.LogoUrl;
+    private string LastSync(MarketplaceConnectionModel connection) =>
+        connection.LastSyncAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? Text["Ainda nao realizada"];
+    private string SyncHealth(MarketplaceConnectionModel connection)
+    {
+        if (connection.LastSyncAt is null) return Text["Aguardando primeira carga"];
+        var elapsed = DateTimeOffset.UtcNow - connection.LastSyncAt.Value;
+        return elapsed.TotalMinutes < 60 ? Text["Sincronizacao recente"] : $"{Text["Ha"]} {Math.Max(1, (int)elapsed.TotalHours)}h";
+    }
+    private static Color StatusColor(string status) => status.ToLowerInvariant() switch
+    {
+        "recebido" or "pago" or "aprovado" => Color.Success,
+        "pendente" or "a receber" => Color.Warning,
+        "cancelado" or "estornado" => Color.Error,
+        _ => Color.Default
+    };
+}

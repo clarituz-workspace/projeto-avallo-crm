@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+Avallo.Web/connectors/
+.git/
+.idea/
+.vs/
+.vscode/
+.deploy/
+Obsidian/
+infrastructure/
+Avallo.Tests/
+**/*.user
+**/*.pubxml
+**/*.pdb
+**/appsettings.Development.json

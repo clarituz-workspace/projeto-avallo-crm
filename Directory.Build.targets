@@ -1,0 +1,42 @@
+<Project>
+
+  <!--
+    Publicacao dos conectores como plugin.
+
+    Cada projeto que define <IsConnectorPlugin>true</IsConnectorPlugin> copia o proprio
+    assembly para a pasta lida por Connectors:PluginPath. Copiamos apenas o DLL do plugin,
+    o pdb e o deps.json: as dependencias compartilhadas (o contrato em
+    Avallo.Connectors.Abstractions, DI, configuracao, HttpClientFactory, Redis) sao
+    resolvidas a partir do host pelo PluginLoadContext. Duplicar esses assemblies na pasta
+    quebraria a identidade de tipo e o plugin deixaria de implementar IConnectorModule.
+
+    Se um plugin futuro depender de um pacote que o Core nao possui, inclua o DLL dessa
+    dependencia aqui - o AssemblyDependencyResolver so encontra o que estiver na pasta.
+  -->
+  <Target Name="PublishConnectorPlugin"
+          AfterTargets="Build"
+          Condition="'$(IsConnectorPlugin)' == 'true'">
+
+    <PropertyGroup>
+      <ConnectorPluginDirectory Condition="'$(ConnectorPluginDirectory)' == ''">$(MSBuildThisFileDirectory)Avallo.Web/connectors/</ConnectorPluginDirectory>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ConnectorPluginArtifact Include="$(TargetDir)$(AssemblyName).dll" />
+      <ConnectorPluginArtifact Include="$(TargetDir)$(AssemblyName).pdb" Condition="Exists('$(TargetDir)$(AssemblyName).pdb')" />
+      <ConnectorPluginArtifact Include="$(TargetDir)$(AssemblyName).deps.json" Condition="Exists('$(TargetDir)$(AssemblyName).deps.json')" />
+    </ItemGroup>
+
+    <MakeDir Directories="$(ConnectorPluginDirectory)" />
+
+    <Copy SourceFiles="@(ConnectorPluginArtifact)"
+          DestinationFolder="$(ConnectorPluginDirectory)"
+          SkipUnchangedFiles="true"
+          Retries="3"
+          RetryDelayMilliseconds="250" />
+
+    <Message Importance="high"
+             Text="Conector '$(AssemblyName)' publicado em $(ConnectorPluginDirectory)" />
+  </Target>
+
+</Project>

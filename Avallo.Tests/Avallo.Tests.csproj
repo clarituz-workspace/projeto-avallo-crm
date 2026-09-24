@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.*" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.*" />
+    <PackageReference Include="TngTech.ArchUnitNET" Version="0.13.4" />
+    <PackageReference Include="xunit.v3" Version="3.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Avallo.Web\Avallo.Web.csproj" />
+    <!-- O Core nao compila mais os conectores; os testes os referenciam diretamente. -->
+    <ProjectReference Include="..\Avallo.Connector.MercadoLivre\Avallo.Connector.MercadoLivre.csproj" />
+    <ProjectReference Include="..\Avallo.Connector.Shopee\Avallo.Connector.Shopee.csproj" />
+    <ProjectReference Include="..\Avallo.Connector.Amazon\Avallo.Connector.Amazon.csproj" />
+  </ItemGroup>
+</Project>

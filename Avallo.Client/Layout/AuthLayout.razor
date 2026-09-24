@@ -1,0 +1,107 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject AppLocalizer Text
+
+<MudThemeProvider Theme="Theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+<DeploymentNoticeBanner />
+<UpdateNotificationModal />
+
+<main class="auth-shell">
+    <section class="auth-story full-image-story">
+        <div class="auth-carousel full-carousel">
+            @for (int i = 0; i < _slides.Length; i++)
+            {
+                var slide = _slides[i];
+                var isActive = i == _activeSlide;
+                <div class="carousel-slide full-slide @(isActive ? "active" : "")">
+                    <img src="@slide" alt="@Text["Slide do carrossel"] @(i + 1)"
+                         class="full-slide-image @(slide == "artboard-1.png" ? "contain-slide-image" : string.Empty)" />
+                </div>
+            }
+        </div>
+
+        <div class="carousel-dots-floating">
+            @for (int i = 0; i < _slides.Length; i++)
+            {
+                var index = i;
+                <button type="button" class="dot @(index == _activeSlide ? "active" : "")" @onclick="() => SetSlide(index)" aria-label="@Text["Slide do carrossel"] @(index + 1)"></button>
+            }
+        </div>
+    </section>
+
+    <section class="auth-form-stage">
+        <div class="auth-mobile-brand">
+            <a class="brand" href="/"><span class="brand-mark">A</span><span class="brand-copy"><strong>Avallo</strong><small>@Text["Gestao inteligente"]</small></span></a>
+        </div>
+        <div class="auth-form-wrap">
+            @Body
+        </div>
+        <MudText Typo="Typo.caption" Class="auth-legal">@Text["Ambiente protegido"] &middot; Avallo 2026</MudText>
+    </section>
+</main>
+
+@code {
+    private int _activeSlide = 0;
+    private CancellationTokenSource? _cts;
+
+    private readonly string[] _slides =
+    [
+        "artboard-1.png",
+        "invoice-cuate.svg",
+        "artboard-1.png"
+    ];
+
+    protected override void OnInitialized()
+    {
+        if (OperatingSystem.IsBrowser())
+        {
+            _cts = new CancellationTokenSource();
+            _ = StartAutoPlayAsync(_cts.Token);
+        }
+    }
+
+    private async Task StartAutoPlayAsync(CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        while (!token.IsCancellationRequested && await timer.WaitForNextTickAsync(token))
+        {
+            _activeSlide = (_activeSlide + 1) % _slides.Length;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void SetSlide(int index)
+    {
+        _activeSlide = index;
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+
+    private static readonly MudTheme Theme = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#3F78F6",
+            Secondary = "#26343B",
+            Background = "#F4F6F9",
+            Surface = "#FFFFFF",
+            TextPrimary = "#26343B",
+            TextSecondary = "#66727A",
+            Error = "#C95252",
+            Info = "#3F78F6",
+            Success = "#2E9B73",
+            Warning = "#EF907B"
+        },
+        LayoutProperties = new LayoutProperties
+        {
+            DefaultBorderRadius = "10px"
+        }
+    };
+}

@@ -1,0 +1,76 @@
+@page "/register"
+@layout AuthLayout
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@inject AuthService Auth
+@inject NavigationManager Navigation
+@inject AppLocalizer Text
+
+<PageTitle>@Text["Criar workspace"] | Avallo</PageTitle>
+
+<div class="form-heading compact">
+    <MudText Typo="Typo.overline" Color="Color.Primary">@Text["Comece agora"]</MudText>
+    <MudText Typo="Typo.h3">@Text["Crie seu workspace"]</MudText>
+    <MudText Typo="Typo.body1">@Text["Sua empresa ganha um ambiente exclusivo desde o primeiro acesso."]</MudText>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Dense Class="mb-4">@_error</MudAlert>
+}
+
+<MudForm @ref="_form" Model="Model">
+    <div class="field-grid">
+        <MudTextField @bind-Value="Model.DisplayName" For="@(() => Model.DisplayName)" Label="@Text["Seu nome"]"
+                      Variant="Variant.Outlined" />
+        <MudTextField @bind-Value="Model.TenantName" For="@(() => Model.TenantName)" Label="@Text["Empresa"]"
+                      Variant="Variant.Outlined" />
+    </div>
+    <MudTextField @bind-Value="Model.Email" For="@(() => Model.Email)" Label="@Text["E-mail profissional"]"
+                  Variant="Variant.Outlined" InputType="InputType.Email" Class="mt-3 mb-3" />
+    <MudTextField @bind-Value="Model.Password" Label="@Text["Crie uma senha"]"
+                  HelperText="@Text["Minimo de 12 caracteres, com maiuscula, numero e simbolo."]"
+                  Variant="Variant.Outlined" InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                   Adornment="Adornment.End" AdornmentIcon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                  OnAdornmentClick="TogglePassword" />
+    <MudCheckBox T="bool" @bind-Value="_accepted" Class="terms-check"
+                 Label="@Text["Concordo com os termos de uso e a politica de privacidade."]" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Size="Size.Large" Class="primary-cta"
+               Disabled="@(_busy || !_accepted)" OnClick="SubmitAsync">
+        @if (_busy) { <MudProgressCircular Indeterminate Size="Size.Small" Class="mr-2" /> }
+        @Text["Criar workspace seguro"]
+    </MudButton>
+</MudForm>
+
+<div class="divider"><span>@Text["ou cadastre com"]</span></div>
+<MudButton Variant="Variant.Outlined" FullWidth Size="Size.Large" Class="google-button"
+           Disabled="_busy" OnClick="RegisterWithGoogle">
+    <img src="google-g.svg" alt="" aria-hidden="true" class="google-button-icon" />
+    @Text["Continuar com o Google"]
+</MudButton>
+<MudText Align="MudBlazor.Align.Center" Class="form-footer">@Text["Ja possui uma conta?"] <MudLink Href="/login">@Text["Entrar"]</MudLink></MudText>
+
+@code {
+    private readonly RegisterModel Model = new();
+    private MudForm? _form;
+    private bool _showPassword;
+    private bool _accepted;
+    private bool _busy;
+    private string? _error;
+
+    private void TogglePassword() => _showPassword = !_showPassword;
+    private void RegisterWithGoogle() => Navigation.NavigateTo(Auth.GetGoogleLoginUrl(Model.TenantName), forceLoad: true);
+
+    private async Task SubmitAsync()
+    {
+        await _form!.ValidateAsync();
+        if (!_form.IsValid || !_accepted) return;
+        _busy = true;
+        _error = null;
+        var result = await Auth.RegisterAsync(Model);
+        _busy = false;
+        if (result.Succeeded)
+            Navigation.NavigateTo("/dashboard", replace: true);
+        else
+            _error = result.Error;
+    }
+}

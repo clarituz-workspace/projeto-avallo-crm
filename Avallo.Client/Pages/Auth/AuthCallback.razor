@@ -1,0 +1,25 @@
+@page "/auth/callback"
+@layout AuthLayout
+@rendermode InteractiveWebAssembly
+@inject AuthService Auth
+@inject NavigationManager Navigation
+@inject AppLocalizer Text
+
+<PageTitle>@Text["Conectando"] | Avallo</PageTitle>
+
+<div class="callback-state">
+    <div class="callback-orbit"><span class="brand-mark">N</span></div>
+    <MudText Typo="Typo.h4">@Text["Conectando seu workspace"]</MudText>
+    <MudText Typo="Typo.body1">@Text["Validando sua conta Google e preparando o ambiente seguro."]</MudText>
+    <MudProgressLinear Indeterminate Color="Color.Primary" Class="mt-6" />
+</div>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        if (!OperatingSystem.IsBrowser())
+            return;
+        await Auth.InitializeAsync(forceRefresh: true);
+        Navigation.NavigateTo(Auth.IsAuthenticated ? "/dashboard" : "/login", replace: true);
+    }
+}

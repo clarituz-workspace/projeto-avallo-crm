@@ -1,0 +1,306 @@
+@page "/inventory"
+@rendermode InteractiveWebAssembly
+@using System.Globalization
+@inject InventoryService InventoryService
+@inject AuthService Auth
+@inject AppLocalizer Text
+@inject ISnackbar Snackbar
+
+<PageTitle>@Text["Estoque e CMV"] | Avallo</PageTitle>
+
+<AppShellLayout PageContext="@Text["Estoque e CMV"]">
+<div class="page-container inventory-page">
+    <header class="page-header">
+        <div><MudText Typo="Typo.overline" Color="Color.Primary">@Text["Custo real dos produtos"]</MudText><MudText Typo="Typo.h3">@Text["Estoque e CMV"]</MudText><MudText Typo="Typo.body1">@Text["Entradas por NF-e, custo medio e baixa contabil na entrega."]</MudText></div>
+        @if (CanWrite)
+        {
+            <div class="inventory-header-actions">
+                <MudButton Variant="Variant.Outlined" OnClick="OpenManualItem"><MudIcon Icon="@Icons.Material.Filled.AddBox"  />
+                    @Text["Cadastro manual"]
+                </MudButton>
+                <MudTooltip Text="@Text["Importar nota fiscal de entrada em formato XML"]" Placement="Placement.Bottom">
+                <MudFileUpload T="IBrowserFile" OnFilesChanged="PreviewInvoiceAsync" Accept=".xml,application/xml,text/xml" Disabled="@_importing">
+                    <CustomContent>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   OnClick="@context.OpenFilePickerAsync">
+                            <MudIcon Icon="@Icons.Material.Filled.UploadFile"  />
+                            @(_importing ? Text["Lendo XML..."] : Text["Importar NF-e XML"])
+                        </MudButton>
+                    </CustomContent>
+                </MudFileUpload>
+                </MudTooltip>
+            </div>
+        }
+    </header>
+
+    <section class="inventory-metrics">
+        <article class="metric-card"><MudText Typo="Typo.caption">@Text["VALOR EM ESTOQUE"]</MudText><MudText Typo="Typo.h4">@Money(_data.Items.Sum(x => x.InventoryValue))</MudText><MudText Typo="Typo.body2">@Text["Custo medio ponderado"]</MudText></article>
+        <article class="metric-card"><MudText Typo="Typo.caption">@Text["UNIDADES DISPONIVEIS"]</MudText><MudText Typo="Typo.h4">@Quantity(_data.Items.Sum(x => x.QuantityOnHand))</MudText><MudText Typo="Typo.body2">@_data.Items.Length @Text["produtos cadastrados"]</MudText></article>
+        <article class="metric-card"><MudText Typo="Typo.caption">@Text["PENDENCIAS DE CMV"]</MudText><MudText Typo="Typo.h4">@_data.Issues.Length</MudText><MudText Typo="Typo.body2">@Text["SKUs ou saldos para conciliar"]</MudText></article>
+    </section>
+
+    @if (_loading)
+    {
+        <div class="mt-4">
+            <MudSkeleton Width="100%" Height="40px" Class="mb-2" />
+            <MudSkeleton Width="100%" Height="30px" Class="mb-2" />
+            <MudSkeleton Width="100%" Height="30px" Class="mb-2" />
+            <MudSkeleton Width="100%" Height="30px" />
+        </div>
+    }
+    else
+    {
+        @if (_data.Issues.Length > 0)
+        {
+            <section class="panel inventory-issues-panel">
+                 <div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Pendencias de conciliacao"]</MudText><MudText Typo="Typo.body2">@Text["Associe o SKU vendido ao produto recebido pela nota fiscal."]</MudText></div>@if (CanWrite) { <MudTooltip Text="@Text["Recalcular estoque e CMV"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Text" Disabled="_reprocessing" OnClick="ReprocessAsync"><MudIcon Icon="@Icons.Material.Filled.Refresh"  />@Text["Reprocessar"]</MudButton></MudTooltip> }</div>
+                <div class="inventory-issue-list">
+                    @foreach (var issue in _data.Issues)
+                    {
+                        <article class="inventory-issue">
+                            <span class="metric-icon"><MudIcon Icon="@IssueIcon(issue.Type)"  /></span>
+                            <div class="inventory-issue-copy"><strong>@issue.ItemName</strong><small>@Text["Pedido"] @issue.OrderId &middot; @issue.Platform &middot; SKU @(issue.ExternalSku ?? Text["nao informado"])</small><span>@IssueLabel(issue.Type)</span></div>
+                            @if (CanWrite && issue.Type == "UnresolvedSku" && !string.IsNullOrWhiteSpace(issue.ExternalSku))
+                            {
+                                <MudSelect T="Guid?" Value="@SelectedItem(issue.Id)" ValueChanged="value => SelectItem(issue.Id, value)" Label="@Text["Produto no estoque"]" Variant="Variant.Outlined" Margin="Margin.Dense" Class="inventory-map-select">
+                                    @foreach (var item in _data.Items) { <MudSelectItem T="Guid?" Value="@((Guid?)item.Id)">@item.Sku &middot; @item.Name</MudSelectItem> }
+                                </MudSelect>
+                                <MudTooltip Text="@Text["Vincular SKU do marketplace ao produto"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@(SelectedItem(issue.Id) is null || _mappingIssue == issue.Id)" OnClick="() => MapAsync(issue)">@Text["Associar SKU"]</MudButton></MudTooltip>
+                            }
+                        </article>
+                    }
+                </div>
+            </section>
+        }
+
+        <section class="panel entries-panel inventory-stock-panel">
+            <div class="entries-toolbar"><div><MudText Typo="Typo.h5">@Text["Posicao de estoque"]</MudText><MudText Typo="Typo.body2">@Text["Saldo atual e custo medio calculado pelas entradas fiscais."]</MudText></div></div>
+            <AppQuickGrid TItem="InventoryItemModel" Items="@_inventoryItems" ItemKey="@((InventoryItemModel item) => item.Id)" PageSize="10" Class="entries-table">
+                <Columns>
+                    <AppTemplateColumn TItem="InventoryItemModel" Title="@Text["SKU interno"]" Context="item" Sortable="true" SortBy="@(GridSort<InventoryItemModel>.ByAscending(x => x.Sku))"><code>@item.Sku</code></AppTemplateColumn>
+                    <AppTemplateColumn TItem="InventoryItemModel" Title="@Text["Produto"]" Context="item" Sortable="true" SortBy="@(GridSort<InventoryItemModel>.ByAscending(x => x.Name))"><strong>@item.Name</strong></AppTemplateColumn>
+                    <AppTemplateColumn TItem="InventoryItemModel" Title="@Text["Associacoes"]" Context="item">@if (item.Mappings.Length == 0) { <small class="table-secondary">@Text["Sem marketplace"]</small> } else { @foreach (var mapping in item.Mappings) { <span class="inventory-mapping">@mapping.Platform: @mapping.ExternalSku</span> } }</AppTemplateColumn>
+                    <AppTemplateColumn TItem="InventoryItemModel" Title="@Text["Quantidade"]" Context="item" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right" Sortable="true" SortBy="@(GridSort<InventoryItemModel>.ByAscending(x => x.QuantityOnHand))">@Quantity(item.QuantityOnHand)</AppTemplateColumn>
+                    <AppTemplateColumn TItem="InventoryItemModel" Title="@Text["Custo medio"]" Context="item" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right" Sortable="true" SortBy="@(GridSort<InventoryItemModel>.ByAscending(x => x.AverageUnitCost))">@Money(item.AverageUnitCost)</AppTemplateColumn>
+                    <AppTemplateColumn TItem="InventoryItemModel" Title="@Text["Valor em estoque"]" Context="item" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right" Sortable="true" SortBy="@(GridSort<InventoryItemModel>.ByAscending(x => x.InventoryValue))"><span class="money-cell">@Money(item.InventoryValue)</span></AppTemplateColumn>
+                    <AppTemplateColumn TItem="InventoryItemModel" Title="@Text["Acoes"]" Context="item"><div class="expense-actions"><MudTooltip Text="@Text["Visualizar"]"><MudIconButton OnClick="() => ViewItem(item)" aria-label="Visualizar"><MudIcon Icon="@Icons.Material.Filled.Visibility"  /></MudIconButton></MudTooltip>@if (CanWrite) { <MudTooltip Text="@Text["Editar"]"><MudIconButton OnClick="() => EditItem(item)" aria-label="Editar"><MudIcon Icon="@Icons.Material.Filled.Edit"  /></MudIconButton></MudTooltip><MudTooltip Text="@Text["Excluir"]"><MudIconButton Color="Color.Error" OnClick="() => AskDeleteItem(item)" aria-label="Excluir"><MudIcon Icon="@Icons.Material.Filled.Delete"  /></MudIconButton></MudTooltip> }</div></AppTemplateColumn>
+                </Columns>
+                <EmptyContent><EmptyReport Icon="@Icons.Material.Filled.Inventory2" Text="@Text["Importe uma NF-e de fornecedor para iniciar o estoque."]" /></EmptyContent>
+            </AppQuickGrid>
+        </section>
+
+        <section class="panel entries-panel inventory-invoices-panel">
+            <div class="entries-toolbar"><div><MudText Typo="Typo.h5">@Text["Notas fiscais de entrada"]</MudText><MudText Typo="Typo.body2">@Text["Documentos que formaram o custo e o saldo do estoque."]</MudText></div></div>
+            <AppQuickGrid TItem="SupplierInvoiceModel" Items="@_supplierInvoices" ItemKey="@((SupplierInvoiceModel invoice) => invoice.Id)" PageSize="10" Class="entries-table">
+                <Columns>
+                    <AppTemplateColumn TItem="SupplierInvoiceModel" Title="@Text["Emissao"]" Context="invoice" Sortable="true" SortBy="@(GridSort<SupplierInvoiceModel>.ByAscending(x => x.IssuedAt))">@invoice.IssuedAt.ToLocalTime().ToString("d", CultureInfo.CurrentCulture)</AppTemplateColumn>
+                    <AppTemplateColumn TItem="SupplierInvoiceModel" Title="@Text["NF-e"]" Context="invoice" Sortable="true" SortBy="@(GridSort<SupplierInvoiceModel>.ByAscending(x => x.InvoiceNumber))"><strong>@invoice.InvoiceNumber</strong><small class="table-secondary">Serie @invoice.Series</small></AppTemplateColumn>
+                    <AppTemplateColumn TItem="SupplierInvoiceModel" Title="@Text["Fornecedor"]" Context="invoice" Sortable="true" SortBy="@(GridSort<SupplierInvoiceModel>.ByAscending(x => x.SupplierName))"><strong>@invoice.SupplierName</strong><small class="table-secondary">@invoice.SupplierTaxId</small></AppTemplateColumn>
+                    <AppTemplateColumn TItem="SupplierInvoiceModel" Title="@Text["Itens"]" Context="invoice" Sortable="true" SortBy="@(GridSort<SupplierInvoiceModel>.ByAscending(x => x.ItemCount))">@invoice.ItemCount</AppTemplateColumn>
+                    <AppTemplateColumn TItem="SupplierInvoiceModel" Title="@Text["Total"]" Context="invoice" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right" Sortable="true" SortBy="@(GridSort<SupplierInvoiceModel>.ByAscending(x => x.Total))"><span class="money-cell">@Money(invoice.Total)</span></AppTemplateColumn>
+                    <AppTemplateColumn TItem="SupplierInvoiceModel" Title="@Text["Acoes"]" Context="invoice"><div class="expense-actions"><MudTooltip Text="@Text["Visualizar"]"><MudIconButton OnClick="() => ViewInvoiceAsync(invoice)" aria-label="Visualizar"><MudIcon Icon="@Icons.Material.Filled.Visibility"  /></MudIconButton></MudTooltip>@if (CanWrite) { <MudTooltip Text="@Text["Editar"]"><MudIconButton OnClick="() => EditInvoiceAsync(invoice)" aria-label="Editar"><MudIcon Icon="@Icons.Material.Filled.Edit"  /></MudIconButton></MudTooltip><MudTooltip Text="@Text["Excluir"]"><MudIconButton Color="Color.Error" OnClick="() => AskDeleteInvoice(invoice)" aria-label="Excluir"><MudIcon Icon="@Icons.Material.Filled.Delete"  /></MudIconButton></MudTooltip> }</div></AppTemplateColumn>
+                </Columns>
+                <EmptyContent><EmptyReport Icon="@Icons.Material.Filled.Description" Text="@Text["Nenhuma NF-e importada."]" Compact /></EmptyContent>
+            </AppQuickGrid>
+        </section>
+    }
+
+    @if (_manualItemOpen)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseManualItem">
+            <article class="connector-modal inventory-manual-modal panel" @onclick:stopPropagation>
+                <div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Cadastrar produto manualmente"]</MudText><MudText Typo="Typo.body2">@Text["Informe o produto e, opcionalmente, seu saldo inicial."]</MudText></div><MudIconButton OnClick="CloseManualItem" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div>
+                <MudForm @ref="_manualForm" Model="_manualItem">
+                    <div class="field-grid">
+                        <MudTextField @bind-Value="_manualItem.Sku" For="@(() => _manualItem.Sku)" Label="@Text["SKU interno"]" Variant="Variant.Outlined" Required />
+                        <MudTextField @bind-Value="_manualItem.Name" For="@(() => _manualItem.Name)" Label="@Text["Nome do produto"]" Variant="Variant.Outlined" Required />
+                        <MudNumericField T="decimal" @bind-Value="_manualItem.QuantityOnHand" Label="@Text["Quantidade inicial"]" Variant="Variant.Outlined" Min="0" />
+                        <MudNumericField T="decimal" @bind-Value="_manualItem.AverageUnitCost" Label="@Text["Custo unitario"]" Variant="Variant.Outlined" Min="0" Format="N2" />
+                    </div>
+                    <div class="inventory-modal-actions"><MudButton Variant="Variant.Text" OnClick="CloseManualItem">@Text["Cancelar"]</MudButton><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_savingManualItem" OnClick="CreateManualItemAsync">@(_savingManualItem ? Text["Salvando..."] : Text["Cadastrar produto"])</MudButton></div>
+                </MudForm>
+            </article>
+        </div>
+    }
+
+    @if (_invoicePreview is not null)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseInvoicePreview">
+            <article class="connector-modal inventory-preview-modal panel" @onclick:stopPropagation>
+                <div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Conferir nota fiscal"]</MudText><MudText Typo="Typo.body2">@Text["Revise fornecedor, valores e produtos antes de atualizar o estoque."]</MudText></div><MudIconButton OnClick="CloseInvoicePreview" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div>
+                <section class="inventory-preview-summary">
+                    <div><small>@Text["NF-e"]</small><strong>@_invoicePreview.InvoiceNumber · Serie @_invoicePreview.Series</strong></div>
+                    <div><small>@Text["Fornecedor"]</small><strong>@_invoicePreview.SupplierName</strong><span>@_invoicePreview.SupplierTaxId</span></div>
+                    <div><small>@Text["Emissao"]</small><strong>@_invoicePreview.IssuedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)</strong></div>
+                    <div><small>@Text["Total"]</small><strong>@Money(_invoicePreview.Total)</strong></div>
+                </section>
+                @if (_invoicePreview.AlreadyImported) { <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">@Text["Esta NF-e ja foi importada e nao pode ser cadastrada novamente."]</MudAlert> }
+                <AppQuickGrid TItem="SupplierInvoiceItemPreviewModel" Items="@_invoicePreviewItems" PageSize="8" Class="entries-table inventory-preview-grid">
+                    <Columns>
+                        <AppTemplateColumn TItem="SupplierInvoiceItemPreviewModel" Title="@Text["SKU"]" Context="line"><code>@line.SupplierSku</code></AppTemplateColumn>
+                        <AppTemplateColumn TItem="SupplierInvoiceItemPreviewModel" Title="@Text["Produto"]" Context="line"><strong>@line.Name</strong>@if (!string.IsNullOrWhiteSpace(line.Barcode)) { <small class="table-secondary">EAN @line.Barcode</small> }</AppTemplateColumn>
+                        <AppTemplateColumn TItem="SupplierInvoiceItemPreviewModel" Title="@Text["Quantidade"]" Context="line" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right">@Quantity(line.Quantity)</AppTemplateColumn>
+                        <AppTemplateColumn TItem="SupplierInvoiceItemPreviewModel" Title="@Text["Custo unitario"]" Context="line" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right">@Money(line.UnitCost)</AppTemplateColumn>
+                        <AppTemplateColumn TItem="SupplierInvoiceItemPreviewModel" Title="@Text["Total"]" Context="line" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right"><strong>@Money(line.Total)</strong></AppTemplateColumn>
+                    </Columns>
+                </AppQuickGrid>
+                <div class="inventory-modal-actions"><MudButton Variant="Variant.Text" OnClick="CloseInvoicePreview">@Text["Cancelar"]</MudButton><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_invoicePreview.AlreadyImported || _confirmingInvoice)" OnClick="ConfirmInvoiceAsync"><MudIcon Icon="@Icons.Material.Filled.Check"  />@(_confirmingInvoice ? Text["Importando..."] : Text["Confirmar importacao"])</MudButton></div>
+            </article>
+        </div>
+    }
+
+    @if (_viewingItem is not null)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseActions">
+            <article class="connector-modal inventory-manual-modal panel" @onclick:stopPropagation>
+                <div class="panel-heading"><MudText Typo="Typo.h5">@Text["Detalhes do produto"]</MudText><MudIconButton OnClick="CloseActions" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div>
+                <div class="inventory-preview-summary"><div><small>SKU</small><strong>@_viewingItem.Sku</strong></div><div><small>@Text["Produto"]</small><strong>@_viewingItem.Name</strong></div><div><small>@Text["Quantidade"]</small><strong>@Quantity(_viewingItem.QuantityOnHand)</strong></div><div><small>@Text["Valor em estoque"]</small><strong>@Money(_viewingItem.InventoryValue)</strong></div></div>
+            </article>
+        </div>
+    }
+    @if (_editingItem is not null)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseActions"><article class="connector-modal inventory-manual-modal panel" @onclick:stopPropagation>
+            <div class="panel-heading"><MudText Typo="Typo.h5">@Text["Editar produto"]</MudText><MudIconButton OnClick="CloseActions" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div>
+            <MudTextField @bind-Value="_itemEdit.Name" Label="@Text["Nome do produto"]" Variant="Variant.Outlined" Required />
+            <div class="inventory-modal-actions"><MudButton Variant="Variant.Text" OnClick="CloseActions">@Text["Cancelar"]</MudButton><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_actionBusy" OnClick="SaveItemAsync">@Text["Salvar"]</MudButton></div>
+        </article></div>
+    }
+    @if (_invoiceDetail is not null)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseActions"><article class="connector-modal inventory-preview-modal panel" @onclick:stopPropagation>
+            <div class="panel-heading"><div><MudText Typo="Typo.h5">NF-e @_invoiceDetail.InvoiceNumber</MudText><MudText Typo="Typo.body2">@_invoiceDetail.AccessKey</MudText></div><MudIconButton OnClick="CloseActions" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div>
+            <section class="inventory-preview-summary"><div><small>@Text["Fornecedor"]</small><strong>@_invoiceDetail.SupplierName</strong><span>@_invoiceDetail.SupplierTaxId</span></div><div><small>@Text["Emissao"]</small><strong>@_invoiceDetail.IssuedAt.ToLocalTime().ToString("g")</strong></div><div><small>@Text["Total"]</small><strong>@Money(_invoiceDetail.Total)</strong></div><div><small>@Text["Itens"]</small><strong>@_invoiceDetail.Items.Length</strong></div></section>
+            <AppQuickGrid TItem="SupplierInvoiceItemPreviewModel" Items="@_invoiceDetailItems" PageSize="8" Class="entries-table inventory-preview-grid"><Columns><AppPropertyColumn TItem="SupplierInvoiceItemPreviewModel" TProperty="string" Property="@(x => x.SupplierSku)" Title="SKU" /><AppPropertyColumn TItem="SupplierInvoiceItemPreviewModel" TProperty="string" Property="@(x => x.Name)" Title="@Text["Produto"]" /><AppTemplateColumn TItem="SupplierInvoiceItemPreviewModel" Title="@Text["Quantidade"]" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right">@Quantity(context.Quantity)</AppTemplateColumn><AppTemplateColumn TItem="SupplierInvoiceItemPreviewModel" Title="@Text["Total"]" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right">@Money(context.Total)</AppTemplateColumn></Columns></AppQuickGrid>
+        </article></div>
+    }
+    @if (_editingInvoice is not null)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseActions"><article class="connector-modal inventory-manual-modal panel" @onclick:stopPropagation>
+            <div class="panel-heading"><MudText Typo="Typo.h5">@Text["Editar nota fiscal"]</MudText><MudIconButton OnClick="CloseActions" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div>
+            <MudTextField @bind-Value="_invoiceEdit.SupplierName" Label="@Text["Fornecedor"]" Variant="Variant.Outlined" Required />
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-3">A chave, os valores e os itens permanecem iguais ao XML original.</MudAlert>
+            <div class="inventory-modal-actions"><MudButton Variant="Variant.Text" OnClick="CloseActions">@Text["Cancelar"]</MudButton><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_actionBusy" OnClick="SaveInvoiceAsync">@Text["Salvar"]</MudButton></div>
+        </article></div>
+    }
+    @if (_deletingItem is not null || _deletingInvoice is not null)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseActions"><article class="connector-modal inventory-manual-modal panel" @onclick:stopPropagation>
+            <div class="panel-heading"><MudText Typo="Typo.h5">@Text["Confirmar exclusao"]</MudText><MudIconButton OnClick="CloseActions" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div>
+            <MudAlert Severity="@(_forceDeletingItem ? Severity.Error : Severity.Warning)" Variant="Variant.Outlined">@(_deletingInvoice is not null ? "A nota sera cancelada, o estoque e a contabilidade serao estornados e o XML sera removido do Blob Storage." : _forceDeletingItem ? "Este produto possui saldo ou historico. Deseja desvincular, zerar o estoque e excluir completamente da operacao? O historico contabil sera preservado para auditoria." : "O produto somente sera excluido diretamente se nao possuir saldo, movimentos ou vinculacoes.")</MudAlert>
+            <div class="inventory-modal-actions"><MudButton Variant="Variant.Text" OnClick="CloseActions">@Text["Cancelar"]</MudButton><MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="_actionBusy" OnClick="ConfirmDeleteAsync">@(_forceDeletingItem ? "Desvincular e excluir" : Text["Excluir"])</MudButton></div>
+        </article></div>
+    }
+</div>
+</AppShellLayout>
+
+@code {
+    private InventoryOverviewModel _data = new([], [], []);
+    private IQueryable<InventoryItemModel> _inventoryItems = Array.Empty<InventoryItemModel>().AsQueryable();
+    private IQueryable<SupplierInvoiceModel> _supplierInvoices = Array.Empty<SupplierInvoiceModel>().AsQueryable();
+    private IQueryable<SupplierInvoiceItemPreviewModel> _invoicePreviewItems = Array.Empty<SupplierInvoiceItemPreviewModel>().AsQueryable();
+    private readonly Dictionary<Guid, Guid?> _selectedItems = [];
+    private Guid? _mappingIssue;
+    private bool _loading = true;
+    private bool _importing;
+    private bool _reprocessing;
+    private bool _manualItemOpen, _savingManualItem, _confirmingInvoice;
+    private CreateInventoryItemModel _manualItem = new();
+    private MudForm? _manualForm;
+    private IBrowserFile? _pendingInvoiceFile;
+    private SupplierInvoicePreviewModel? _invoicePreview;
+    private InventoryItemModel? _viewingItem, _editingItem, _deletingItem;
+    private SupplierInvoiceModel? _editingInvoice, _deletingInvoice;
+    private SupplierInvoiceDetailModel? _invoiceDetail;
+    private IQueryable<SupplierInvoiceItemPreviewModel> _invoiceDetailItems = Array.Empty<SupplierInvoiceItemPreviewModel>().AsQueryable();
+    private UpdateInventoryItemModel _itemEdit = new();
+    private UpdateSupplierInvoiceModel _invoiceEdit = new();
+    private bool _actionBusy;
+    private bool _forceDeletingItem;
+    private bool CanWrite => Auth.CurrentUser?.Roles.Any(x => x is "Admin" or "Vendedor") == true;
+    protected override Task OnInitializedAsync() =>
+        OperatingSystem.IsBrowser() ? LoadAsync() : Task.CompletedTask;
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            var result = await InventoryService.GetOverviewAsync();
+            if (result.Succeeded)
+            {
+                _data = result.Value!;
+                _inventoryItems = _data.Items.AsQueryable();
+                _supplierInvoices = _data.Invoices.AsQueryable();
+            }
+            else Snackbar.Add(result.Error!, Severity.Error);
+        }
+        finally { _loading = false; }
+    }
+    private async Task PreviewInvoiceAsync(InputFileChangeEventArgs args)
+    {
+        _importing = true;
+        _pendingInvoiceFile = args.File;
+        try
+        {
+            var result = await InventoryService.PreviewInvoiceAsync(args.File);
+            if (result.Succeeded)
+            {
+                _invoicePreview = result.Value;
+                _invoicePreviewItems = (_invoicePreview?.Items ?? []).AsQueryable();
+            }
+            else
+            {
+                _pendingInvoiceFile = null;
+                Snackbar.Add(result.Error!, Severity.Error);
+            }
+        }
+        catch (Exception exception)
+        {
+            _pendingInvoiceFile = null;
+            Snackbar.Add($"Nao foi possivel ler a NF-e: {exception.Message}", Severity.Error);
+        }
+        finally { _importing = false; }
+    }
+    private async Task ConfirmInvoiceAsync() { if (_pendingInvoiceFile is null || _invoicePreview is null) return; _confirmingInvoice = true; var result = await InventoryService.ImportInvoiceAsync(_pendingInvoiceFile); _confirmingInvoice = false; Snackbar.Add(result.Succeeded ? $"NF-e {result.Value!.InvoiceNumber} importada e estoque atualizado." : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) { CloseInvoicePreview(); await LoadAsync(); } }
+    private void CloseInvoicePreview() { if (_confirmingInvoice) return; _invoicePreview = null; _invoicePreviewItems = Array.Empty<SupplierInvoiceItemPreviewModel>().AsQueryable(); _pendingInvoiceFile = null; }
+    private void OpenManualItem() { _manualItem = new(); _manualItemOpen = true; }
+    private void CloseManualItem() { if (!_savingManualItem) _manualItemOpen = false; }
+    private async Task CreateManualItemAsync() { await _manualForm!.ValidateAsync(); if (!_manualForm.IsValid) return; _savingManualItem = true; var result = await InventoryService.CreateItemAsync(_manualItem); _savingManualItem = false; Snackbar.Add(result.Succeeded ? "Produto cadastrado no estoque." : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) { _manualItemOpen = false; await LoadAsync(); } }
+    private Guid? SelectedItem(Guid issueId) => _selectedItems.GetValueOrDefault(issueId);
+    private void SelectItem(Guid issueId, Guid? itemId) => _selectedItems[issueId] = itemId;
+    private async Task MapAsync(InventoryIssueModel issue) { if (SelectedItem(issue.Id) is not { } itemId || issue.ExternalSku is null) return; _mappingIssue = issue.Id; var result = await InventoryService.CreateMappingAsync(issue.Platform, issue.ExternalSku, itemId); _mappingIssue = null; Snackbar.Add(result.Succeeded ? "SKU associado e CMV reprocessado." : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) await LoadAsync(); }
+    private async Task ReprocessAsync() { _reprocessing = true; var result = await InventoryService.ReprocessAsync(); _reprocessing = false; Snackbar.Add(result.Succeeded ? $"{result.Value!.ProcessedItems} itens processados." : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) await LoadAsync(); }
+    private void ViewItem(InventoryItemModel item) { CloseActions(); _viewingItem = item; }
+    private void EditItem(InventoryItemModel item) { CloseActions(); _editingItem = item; _itemEdit = new() { Name = item.Name }; }
+    private void AskDeleteItem(InventoryItemModel item) { CloseActions(); _deletingItem = item; }
+    private void AskDeleteInvoice(SupplierInvoiceModel invoice) { CloseActions(); _deletingInvoice = invoice; }
+    private async Task ViewInvoiceAsync(SupplierInvoiceModel invoice) { CloseActions(); var result = await InventoryService.GetInvoiceAsync(invoice.Id); if (result.Succeeded) { _invoiceDetail = result.Value; _invoiceDetailItems = result.Value!.Items.AsQueryable(); } else Snackbar.Add(result.Error!, Severity.Error); }
+    private async Task EditInvoiceAsync(SupplierInvoiceModel invoice) { CloseActions(); var result = await InventoryService.GetInvoiceAsync(invoice.Id); if (result.Succeeded) { _editingInvoice = invoice; _invoiceEdit = new() { SupplierName = result.Value!.SupplierName }; } else Snackbar.Add(result.Error!, Severity.Error); }
+    private async Task SaveItemAsync() { if (_editingItem is null || string.IsNullOrWhiteSpace(_itemEdit.Name)) return; _actionBusy = true; var result = await InventoryService.UpdateItemAsync(_editingItem.Id, _itemEdit); _actionBusy = false; Snackbar.Add(result.Succeeded ? "Produto atualizado." : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) { CloseActions(); await LoadAsync(); } }
+    private async Task SaveInvoiceAsync() { if (_editingInvoice is null || string.IsNullOrWhiteSpace(_invoiceEdit.SupplierName)) return; _actionBusy = true; var result = await InventoryService.UpdateInvoiceAsync(_editingInvoice.Id, _invoiceEdit); _actionBusy = false; Snackbar.Add(result.Succeeded ? "Nota fiscal atualizada." : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) { CloseActions(); await LoadAsync(); } }
+    private async Task ConfirmDeleteAsync()
+    {
+        _actionBusy = true;
+        var result = _deletingInvoice is not null
+            ? await InventoryService.DeleteInvoiceAsync(_deletingInvoice.Id)
+            : _deletingItem is not null
+                ? await InventoryService.DeleteItemAsync(_deletingItem.Id, _forceDeletingItem)
+                : AuthResult.Failure("Registro nao selecionado.");
+        _actionBusy = false;
+        if (!result.Succeeded && _deletingItem is not null && !_forceDeletingItem
+            && result.Error?.Contains("Deseja desvincular", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            _forceDeletingItem = true;
+            return;
+        }
+        Snackbar.Add(result.Succeeded ? (_forceDeletingItem ? "Produto desvinculado e excluido da operacao." : "Registro excluido com sucesso.") : result.Error!,
+            result.Succeeded ? Severity.Success : Severity.Error);
+        if (result.Succeeded) { CloseActions(); await LoadAsync(); }
+    }
+    private void CloseActions() { if (_actionBusy) return; _viewingItem = null; _editingItem = null; _deletingItem = null; _editingInvoice = null; _deletingInvoice = null; _invoiceDetail = null; _forceDeletingItem = false; _invoiceDetailItems = Array.Empty<SupplierInvoiceItemPreviewModel>().AsQueryable(); }
+    private static string Money(decimal value) => value.ToString("C", CultureInfo.CurrentCulture);
+    private static string Quantity(decimal value) => value.ToString("N4", CultureInfo.CurrentCulture).TrimEnd('0').TrimEnd(',', '.');
+    private static string IssueIcon(string type) => type == "InsufficientStock" ? Icons.Material.Filled.Inventory2 : Icons.Material.Filled.LinkOff;
+    private string IssueLabel(string type) => type switch { "UnresolvedSku" => Text["SKU sem associacao"], "InsufficientStock" => Text["Saldo insuficiente"], "MissingOriginalCogs" => Text["CMV original nao localizado"], _ => type };
+}

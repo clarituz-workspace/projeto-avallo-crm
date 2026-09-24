@@ -1,0 +1,78 @@
+@implements IAsyncDisposable
+@inject DeploymentRealtimeService Realtime
+@inject NavigationManager Navigation
+@inject IJSRuntime JavaScript
+@inject AppLocalizer Text
+
+@if (_notice is not null)
+{
+    <aside class="deployment-notice" role="alert" aria-live="assertive">
+        <MudIcon Icon="@Icons.Material.Filled.SystemUpdateAlt"  />
+        <div>
+            <strong>@Text["Nova versao disponivel"] @_notice.Version</strong>
+            <span>@_notice.Message</span>
+        </div>
+        <span class="deployment-countdown">@Countdown</span>
+    </aside>
+}
+
+@code {
+    private DeploymentNoticeModel? _notice;
+    private CancellationTokenSource? _countdownCancellation;
+    private TimeSpan _remaining;
+    private string Countdown => $"{Math.Max(0, (int)Math.Ceiling(_remaining.TotalSeconds))}s";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!OperatingSystem.IsBrowser())
+            return;
+
+        Realtime.NoticeReceived += OnNoticeReceived;
+        try
+        {
+            await Realtime.StartAsync();
+        }
+        catch
+        {
+            // Automatic reconnect handles transient deployment/network interruptions.
+        }
+    }
+
+    private void OnNoticeReceived(DeploymentNoticeModel notice) =>
+        _ = InvokeAsync(() => BeginCountdownAsync(notice));
+
+    private async Task BeginCountdownAsync(DeploymentNoticeModel notice)
+    {
+        _countdownCancellation?.Cancel();
+        _countdownCancellation?.Dispose();
+        _countdownCancellation = new CancellationTokenSource();
+        _notice = notice;
+        await JavaScript.InvokeVoidAsync("nucleoDeployment.prepareForRestart", notice);
+
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            do
+            {
+                _remaining = notice.RestartAtUtc - DateTimeOffset.UtcNow;
+                StateHasChanged();
+            }
+            while (_remaining > TimeSpan.Zero &&
+                   await timer.WaitForNextTickAsync(_countdownCancellation.Token));
+
+            if (!_countdownCancellation.IsCancellationRequested)
+                Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Realtime.NoticeReceived -= OnNoticeReceived;
+        _countdownCancellation?.Cancel();
+        _countdownCancellation?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

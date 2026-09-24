@@ -1,0 +1,111 @@
+@page "/reconciliation"
+@rendermode InteractiveWebAssembly
+@using System.Globalization
+@inject ReconciliationClient ReconciliationApi
+@inject AuthService Auth
+@inject AppLocalizer Text
+@inject ISnackbar Snackbar
+
+<PageTitle>@Text["Conciliacao financeira"] | Avallo</PageTitle>
+
+<AppShellLayout PageContext="@Text["Conciliacao financeira"]">
+<div class="page-container reconciliation-page">
+    <header class="page-header">
+        <div><MudText Typo="Typo.overline" Color="Color.Primary">@Text["Caixa comprovado"]</MudText><MudText Typo="Typo.h3">@Text["Conciliacao financeira"]</MudText><MudText Typo="Typo.body1">@Text["Compare repasses previstos com os creditos efetivos do banco."]</MudText></div>
+        <div class="reconciliation-header-actions">
+            <MudDatePicker @bind-Date="_selectedMonth" Label="@Text["Competencia"]" Variant="Variant.Outlined" DateFormat="MM/yyyy" OpenTo="OpenTo.Year" Margin="Margin.Dense" />
+            <MudTooltip Text="@Text["Recarregar dados de conciliacao"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Outlined" OnClick="LoadAsync"><MudIcon Icon="@Icons.Material.Filled.Refresh"  />@Text["Atualizar"]</MudButton></MudTooltip>
+            @if (CanWrite)
+            {
+                <MudTooltip Text="@Text["Importar extrato bancario"]" Placement="Placement.Bottom">
+                    <MudFileUpload T="IBrowserFile" OnFilesChanged="ImportAsync" Accept=".ofx,.csv,application/x-ofx,text/csv" Disabled="@_importing">
+                        <CustomContent>
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       OnClick="@context.OpenFilePickerAsync"><MudIcon Icon="@Icons.Material.Filled.UploadFile"  />
+                                @(_importing ? Text["Importando..."] : Text["Importar OFX ou CSV"])
+                            </MudButton>
+                        </CustomContent>
+                    </MudFileUpload>
+                </MudTooltip>
+            }
+        </div>
+    </header>
+
+    <section class="reconciliation-metrics">
+        <article class="metric-card"><MudText Typo="Typo.caption">@Text["REPASSADO PELOS CANAIS"]</MudText><MudText Typo="Typo.h4">@Money(_data.ReleasedAmount)</MudText><MudText Typo="Typo.body2">@Text["Previsto para a competencia"]</MudText></article>
+        <article class="metric-card"><MudText Typo="Typo.caption">@Text["CONFIRMADO NO BANCO"]</MudText><MudText Typo="Typo.h4">@Money(_data.MatchedAmount)</MudText><MudText Typo="Typo.body2">@Text["Com lancamento contabil"]</MudText></article>
+        <article class="metric-card"><MudText Typo="Typo.caption">@Text["PENDENTE DE REVISAO"]</MudText><MudText Typo="Typo.h4">@Money(_data.UnmatchedAmount)</MudText><MudText Typo="Typo.body2">@_data.UnmatchedCount @Text["credito(s) sem correspondencia"]</MudText></article>
+    </section>
+
+    @if (_loading)
+    {
+        <div class="mt-4">
+            <MudSkeleton Width="100%" Height="40px" Class="mb-2" />
+            <MudSkeleton Width="100%" Height="30px" Class="mb-2" />
+            <MudSkeleton Width="100%" Height="30px" Class="mb-2" />
+            <MudSkeleton Width="100%" Height="30px" />
+        </div>
+    }
+    else
+    {
+        <section class="panel entries-panel reconciliation-transactions">
+            <div class="entries-toolbar"><div><MudText Typo="Typo.h5">@Text["Movimentos bancarios"]</MudText><MudText Typo="Typo.body2">@Text["Sugestoes usam referencia, valor e proximidade da data de liberacao."]</MudText></div></div>
+            <AppQuickGrid TItem="ReconciliationTransactionModel" Items="@_data.Transactions.AsQueryable()" ItemKey="@((ReconciliationTransactionModel item) => item.Id)" PageSize="10" Class="entries-table">
+                <Columns>
+                    <AppTemplateColumn TItem="ReconciliationTransactionModel" Title="@Text["Data"]" Sortable="true" SortBy="@(GridSort<ReconciliationTransactionModel>.ByAscending(x => x.OccurredAt))">@context.OccurredAt.ToLocalTime().ToString("d", CultureInfo.CurrentCulture)</AppTemplateColumn>
+                    <AppTemplateColumn TItem="ReconciliationTransactionModel" Title="@Text["Movimento"]" Sortable="true" SortBy="@(GridSort<ReconciliationTransactionModel>.ByAscending(x => x.Description))"><strong>@context.Description</strong><small class="table-secondary">@(context.Reference ?? Text["Sem referencia"])</small></AppTemplateColumn>
+                    <AppTemplateColumn TItem="ReconciliationTransactionModel" Title="@Text["Status"]" Sortable="true" SortBy="@(GridSort<ReconciliationTransactionModel>.ByAscending(x => x.Status))"><span class="reconciliation-status @context.Status.ToLowerInvariant()">@StatusLabel(context.Status)</span>@if (!string.IsNullOrWhiteSpace(context.ReviewNote)) { <small class="table-secondary">@context.ReviewNote</small> }</AppTemplateColumn>
+                    <AppTemplateColumn TItem="ReconciliationTransactionModel" Title="@Text["Melhor correspondencia"]">@if (context.Suggestions.FirstOrDefault() is { } suggestion) { <strong>@suggestion.Platform · @suggestion.PaymentId</strong><small class="table-secondary">@Text["Pedido"] @suggestion.OrderId · @Money(suggestion.AvailableAmount)</small> } else { <small class="table-secondary">@Text["Nenhum repasse proximo"]</small> }</AppTemplateColumn>
+                    <AppTemplateColumn TItem="ReconciliationTransactionModel" Title="@Text["Valor"]" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right" Sortable="true" SortBy="@(GridSort<ReconciliationTransactionModel>.ByAscending(x => x.Amount))"><span class="money-cell">@Money(context.Amount)</span></AppTemplateColumn>
+                    <AppTemplateColumn TItem="ReconciliationTransactionModel">@if (CanReview && context.Status == "Unmatched") { <div class="reconciliation-row-actions"><MudTooltip Text="@Text["Vincular credito bancario a repasse"]" Placement="Placement.Bottom"><MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(context.Suggestions.Length == 0 || _busyId == context.Id)" OnClick="() => OpenMatch(context)">@Text["Conciliar"]</MudButton></MudTooltip><MudTooltip Text="@Text["Ignorar movimento com justificativa"]" Placement="Placement.Bottom"><MudIconButton Size="Size.Small" Disabled="@(_busyId == context.Id)" OnClick="() => OpenIgnore(context)" aria-label="@Text["Ignorar movimento"]"><MudIcon Icon="@Icons.Material.Filled.Block"  /></MudIconButton></MudTooltip></div> }</AppTemplateColumn>
+                </Columns>
+                <EmptyContent><EmptyReport Icon="@Icons.Material.Filled.AccountBalance" Text="@Text["Importe um extrato bancario OFX ou CSV para iniciar a conciliacao."]" /></EmptyContent>
+            </AppQuickGrid>
+        </section>
+
+        <section class="panel entries-panel reconciliation-imports">
+            <div class="entries-toolbar"><div><MudText Typo="Typo.h5">@Text["Extratos importados"]</MudText><MudText Typo="Typo.body2">@Text["Arquivos preservados com hash para auditoria."]</MudText></div></div>
+            <AppQuickGrid TItem="ReconciliationImportModel" Items="@_data.Imports.AsQueryable()" ItemKey="@((ReconciliationImportModel item) => item.Id)" PageSize="10" Class="entries-table"><Columns><AppTemplateColumn TItem="ReconciliationImportModel" Title="@Text["Arquivo"]" Sortable="true" SortBy="@(GridSort<ReconciliationImportModel>.ByAscending(x => x.OriginalFileName))"><strong>@context.OriginalFileName</strong><small class="table-secondary">@(context.AccountReference ?? Text["Conta nao informada"])</small></AppTemplateColumn><AppPropertyColumn TItem="ReconciliationImportModel" TProperty="string" Property="@(x => x.Source)" Title="@Text["Formato"]" Sortable="true" /><AppTemplateColumn TItem="ReconciliationImportModel" Title="@Text["Periodo"]" Sortable="true" SortBy="@(GridSort<ReconciliationImportModel>.ByAscending(x => x.PeriodStart))">@context.PeriodStart.ToString("d", CultureInfo.CurrentCulture) - @context.PeriodEnd.ToString("d", CultureInfo.CurrentCulture)</AppTemplateColumn><AppPropertyColumn TItem="ReconciliationImportModel" TProperty="int" Property="@(x => x.TransactionCount)" Title="@Text["Transacoes"]" Sortable="true" /><AppTemplateColumn TItem="ReconciliationImportModel" Title="@Text["Importado em"]" Sortable="true" SortBy="@(GridSort<ReconciliationImportModel>.ByAscending(x => x.ImportedAt))">@context.ImportedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)</AppTemplateColumn></Columns><EmptyContent><EmptyReport Icon="@Icons.Material.Filled.UploadFile" Text="@Text["Nenhum extrato importado nesta competencia."]" Compact /></EmptyContent></AppQuickGrid>
+        </section>
+    }
+
+    @if (_matching is not null)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseDialogs"><article class="connector-modal reconciliation-modal panel" @onclick:stopPropagation><div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Conciliar credito de"] @Money(_matching.Amount)</MudText><MudText Typo="Typo.body2">@Text["Selecione um ou mais repasses. A soma deve fechar o credito bancario."]</MudText></div><MudIconButton OnClick="CloseDialogs" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div><div class="reconciliation-candidates">@foreach (var candidate in _matching.Suggestions) { <article><MudCheckBox T="bool" Value="@IsSelected(candidate.MarketplacePaymentId)" ValueChanged="value => ToggleCandidate(candidate, value)" Color="Color.Primary" /><div><strong>@candidate.Platform · @candidate.PaymentId</strong><small>@Text["Pedido"] @candidate.OrderId · @Text["liberacao"] @(candidate.ReleaseAt?.ToLocalTime().ToString("d") ?? Text["nao informada"])</small></div><MudNumericField T="decimal" Value="@Allocation(candidate.MarketplacePaymentId)" ValueChanged="value => SetAllocation(candidate.MarketplacePaymentId, value)" Min="0" Max="candidate.AvailableAmount" Format="N2" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@(!IsSelected(candidate.MarketplacePaymentId))" /></article> }</div><div class="reconciliation-total"><span>@Text["Soma selecionada"]</span><strong>@Money(SelectedTotal) / @Money(_matching.Amount)</strong></div><MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Disabled="@(!AllocationIsValid || _busyId is not null)" OnClick="ConfirmAsync">@Text["Confirmar conciliacao"]</MudButton></article></div>
+    }
+    @if (_ignoring is not null)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseDialogs"><article class="connector-modal reconciliation-modal panel" @onclick:stopPropagation><div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Ignorar movimento"]</MudText><MudText Typo="Typo.body2">@Text["Use apenas para creditos que nao correspondem a repasses de marketplace."]</MudText></div><MudIconButton OnClick="CloseDialogs" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div><MudTextField @bind-Value="_ignoreReason" Label="@Text["Justificativa de auditoria"]" Variant="Variant.Outlined" Lines="3" Required Class="mb-3" /><MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Disabled="@(string.IsNullOrWhiteSpace(_ignoreReason) || _busyId is not null)" OnClick="IgnoreAsync">@Text["Confirmar justificativa"]</MudButton></article></div>
+    }
+</div>
+</AppShellLayout>
+
+@code {
+    private ReconciliationOverviewModel _data = new(default, default, 0, 0, 0, 0, [], []);
+    private readonly Dictionary<Guid, decimal> _allocations = [];
+    private DateTime? _selectedMonth = DateTime.Today;
+    private ReconciliationTransactionModel? _matching, _ignoring;
+    private Guid? _busyId;
+    private string _ignoreReason = string.Empty;
+    private bool _loading = true, _importing;
+    private bool CanReview => Auth.CurrentUser?.Roles.Any(x => x is "Admin" or "Contador") == true;
+    private bool CanWrite => Auth.CurrentUser?.Roles.Any(x => x is "Admin" or "Vendedor") == true;
+    private decimal SelectedTotal => _allocations.Values.Sum();
+    private bool AllocationIsValid => _matching is not null && _allocations.Count > 0 && Math.Abs(SelectedTotal - _matching.Amount) <= 0.01m;
+    protected override Task OnInitializedAsync() =>
+        OperatingSystem.IsBrowser() ? LoadAsync() : Task.CompletedTask;
+    private async Task LoadAsync() { var month = _selectedMonth ?? DateTime.Today; var from = new DateOnly(month.Year, month.Month, 1); _loading = true; var result = await ReconciliationApi.GetOverviewAsync(from, from.AddMonths(1).AddDays(-1)); _loading = false; if (result.Succeeded) _data = result.Value!; else Snackbar.Add(result.Error!, Severity.Error); }
+    private async Task ImportAsync(InputFileChangeEventArgs args) { _importing = true; var result = await ReconciliationApi.ImportAsync(args.File); _importing = false; Snackbar.Add(result.Succeeded ? $"{Text["Extrato importado com"]} {result.Value!.TransactionCount} {Text["movimentos."]}" : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) await LoadAsync(); }
+    private void OpenMatch(ReconciliationTransactionModel transaction) { _matching = transaction; _allocations.Clear(); var exact = transaction.Suggestions.FirstOrDefault(x => Math.Abs(x.AvailableAmount - transaction.Amount) <= 0.01m); if (exact is not null) _allocations[exact.MarketplacePaymentId] = transaction.Amount; }
+    private void OpenIgnore(ReconciliationTransactionModel transaction) { _ignoring = transaction; _ignoreReason = string.Empty; }
+    private void CloseDialogs() { _matching = null; _ignoring = null; _allocations.Clear(); }
+    private bool IsSelected(Guid id) => _allocations.ContainsKey(id);
+    private decimal Allocation(Guid id) => _allocations.GetValueOrDefault(id);
+    private void ToggleCandidate(ReconciliationPaymentSuggestionModel candidate, bool selected) { if (selected) _allocations[candidate.MarketplacePaymentId] = Math.Min(candidate.AvailableAmount, Math.Max(0, (_matching?.Amount ?? 0) - SelectedTotal)); else _allocations.Remove(candidate.MarketplacePaymentId); }
+    private void SetAllocation(Guid id, decimal value) { if (_allocations.ContainsKey(id)) _allocations[id] = value; }
+    private async Task ConfirmAsync() { if (_matching is null || !AllocationIsValid) return; _busyId = _matching.Id; var result = await ReconciliationApi.ConfirmAsync(_matching.Id, _allocations.Select(x => new ReconciliationAllocationInput(x.Key, x.Value)).ToArray()); _busyId = null; Snackbar.Add(result.Succeeded ? Text["Credito conciliado e contabilizado."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) { CloseDialogs(); await LoadAsync(); } }
+    private async Task IgnoreAsync() { if (_ignoring is null) return; _busyId = _ignoring.Id; var result = await ReconciliationApi.IgnoreAsync(_ignoring.Id, _ignoreReason); _busyId = null; Snackbar.Add(result.Succeeded ? Text["Movimento ignorado com justificativa."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) { CloseDialogs(); await LoadAsync(); } }
+    private string StatusLabel(string status) => status switch { "Unmatched" => Text["Pendente"], "Matched" => Text["Conciliado"], "Ignored" => Text["Ignorado"], _ => status };
+    private static string Money(decimal value) => value.ToString("C", CultureInfo.CurrentCulture);
+}

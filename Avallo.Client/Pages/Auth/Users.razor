@@ -1,0 +1,73 @@
+@page "/users"
+@rendermode InteractiveWebAssembly
+@using System.Globalization
+@using System.Security.Cryptography
+@inject UserAccessClient Access
+@inject AuthService Auth
+@inject AppLocalizer Text
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>@Text["Acessos da empresa"] | Avallo</PageTitle>
+
+<AppShellLayout PageContext="@Text["Acessos da empresa"]">
+<div class="page-container users-page">
+    <header class="page-header"><div><MudText Typo="Typo.overline" Color="Color.Primary">@Text["Seguranca do workspace"]</MudText><MudText Typo="Typo.h3">@Text["Acessos da empresa"]</MudText><MudText Typo="Typo.body1">@Text["Cadastre o contador e controle quem pode visualizar os dados do tenant."]</MudText></div><MudTooltip Text="@Text["Cadastrar novo usuario no workspace"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenCreate"><MudIcon Icon="@Icons.Material.Filled.PersonAdd"  />@Text["Novo acesso"]</MudButton></MudTooltip></header>
+
+    <section class="users-role-grid">
+        <article class="panel users-role-card"><span class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.Calculate"  /></span><div><MudText Typo="Typo.h6">@Text["Contador"]</MudText><MudText Typo="Typo.body2">@Text["Acesso somente para visualizacao do painel, DRE, estoque, fiscal, despesas, comprovantes e fechamentos."]</MudText><small>@Text["Pode baixar relatorios e documentos, mas nao cria, altera, aprova, concilia ou fecha competencias."]</small></div></article>
+        <article class="panel users-role-card"><span class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.Storefront"  /></span><div><MudText Typo="Typo.h6">@Text["Vendedor"]</MudText><MudText Typo="Typo.body2">@Text["Opera conectores, despesas, estoque e dados comerciais do tenant."]</MudText><small>@Text["Nao aprova o fechamento contabil nem gerencia outros usuarios."]</small></div></article>
+    </section>
+
+    <section class="panel entries-panel users-list-panel">
+        <div class="entries-toolbar"><div><MudText Typo="Typo.h5">@Text["Pessoas com acesso"]</MudText><MudText Typo="Typo.body2">@Text["Todos os usuarios abaixo pertencem exclusivamente a esta empresa."]</MudText></div><MudTooltip Text="@Text["Recarregar lista de usuarios"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Text" Disabled="_loading" OnClick="LoadAsync"><MudIcon Icon="@Icons.Material.Filled.Refresh"  />@Text["Atualizar"]</MudButton></MudTooltip></div>
+        @if (_loading)
+        {
+            <div class="mt-4">
+                <MudSkeleton Width="100%" Height="40px" Class="mb-2" />
+                <MudSkeleton Width="100%" Height="30px" Class="mb-2" />
+                <MudSkeleton Width="100%" Height="30px" />
+            </div>
+        }
+        else
+        {
+            <AppQuickGrid TItem="TenantUserModel" Items="@_users.AsQueryable()" ItemKey="@((TenantUserModel item) => item.Id)" PageSize="10" Class="entries-table">
+                <Columns><AppTemplateColumn TItem="TenantUserModel" Title="@Text["Usuario"]" Sortable="true" SortBy="@(GridSort<TenantUserModel>.ByAscending(x => x.DisplayName))"><strong>@context.DisplayName</strong><small class="table-secondary">@context.Email</small></AppTemplateColumn><AppTemplateColumn TItem="TenantUserModel" Title="@Text["Permissao"]" Sortable="true" SortBy="@(GridSort<TenantUserModel>.ByAscending(x => x.Role))"><span class="user-role-badge">@Text[context.Role]</span></AppTemplateColumn><AppTemplateColumn TItem="TenantUserModel" Title="@Text["Criado em"]" Sortable="true" SortBy="@(GridSort<TenantUserModel>.ByAscending(x => x.CreatedAt))">@context.CreatedAt.ToLocalTime().ToString("d", CultureInfo.CurrentCulture)</AppTemplateColumn><AppTemplateColumn TItem="TenantUserModel" Title="@Text["Status"]" Sortable="true" SortBy="@(GridSort<TenantUserModel>.ByAscending(x => x.IsActive))"><span class="user-access-status @(context.IsActive ? "active" : "inactive")"><i></i>@(context.IsActive ? context.RequiresPasswordChange ? Text["Senha temporaria"] : Text["Ativo"] : Text["Desativado"])</span></AppTemplateColumn><AppTemplateColumn TItem="TenantUserModel">@if (context.Role != "Admin") { <MudButton Variant="Variant.Text" Size="Size.Small" Color="@(context.IsActive ? Color.Error : Color.Primary)" Disabled="@(_changingId == context.Id)" OnClick="() => SetActiveAsync(context)">@(context.IsActive ? Text["Desativar"] : Text["Reativar"])</MudButton> }</AppTemplateColumn></Columns>
+                <EmptyContent><EmptyReport Icon="@Icons.Material.Filled.Group" Text="@Text["Nenhum acesso adicional foi cadastrado."]" /></EmptyContent>
+            </AppQuickGrid>
+        }
+    </section>
+
+    @if (_creating)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseCreate"><article class="connector-modal users-modal panel" @onclick:stopPropagation><div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Cadastrar acesso"]</MudText><MudText Typo="Typo.body2">@Text["O usuario recebera acesso somente aos dados desta empresa."]</MudText></div><MudIconButton OnClick="CloseCreate" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div><MudForm @ref="_form" Model="_model"><MudTextField @bind-Value="_model.DisplayName" For="@(() => _model.DisplayName)" Label="@Text["Nome completo"]" Variant="Variant.Outlined" Class="mb-3" /><MudTextField @bind-Value="_model.Email" For="@(() => _model.Email)" Label="@Text["E-mail profissional"]" Variant="Variant.Outlined" InputType="InputType.Email" Class="mb-3" /><MudSelect T="string" @bind-Value="_model.Role" Label="@Text["Permissao"]" Variant="Variant.Outlined" Class="mb-3"><MudSelectItem Value="@("Contador")">@Text["Contador"]</MudSelectItem><MudSelectItem Value="@("Vendedor")">@Text["Vendedor"]</MudSelectItem></MudSelect><div class="temporary-password"><MudTextField @bind-Value="_model.TemporaryPassword" Label="@Text["Senha temporaria"]" Variant="Variant.Outlined" InputType="@(_showPassword ? InputType.Text : InputType.Password)" Adornment="Adornment.End" AdornmentIcon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)" OnAdornmentClick="() => _showPassword = !_showPassword" /><MudTooltip Text="@Text["Gerar senha temporaria segura"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Outlined" OnClick="GeneratePassword">@Text["Gerar"]</MudButton></MudTooltip></div><MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense Class="my-4">@Text["Envie a senha por um canal seguro. No primeiro login, o usuario sera obrigado a substitui-la."]</MudAlert><MudTooltip Text="@Text["Criar acesso e enviar senha temporaria"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Disabled="_saving" OnClick="CreateAsync">@(_saving ? Text["Cadastrando..."] : Text["Criar acesso"])</MudButton></MudTooltip></MudForm></article></div>
+    }
+</div>
+</AppShellLayout>
+
+@code {
+    private TenantUserModel[] _users = [];
+    private CreateUserModel _model = NewModel();
+    private MudForm? _form;
+    private Guid? _changingId;
+    private bool _loading = true, _creating, _saving, _showPassword;
+    protected override async Task OnInitializedAsync()
+    {
+        if (!OperatingSystem.IsBrowser())
+            return;
+        await Auth.InitializeAsync();
+        if (Auth.CurrentUser?.Roles.Contains("Admin") != true)
+        {
+            Navigation.NavigateTo("/dashboard");
+            return;
+        }
+        await LoadAsync();
+    }
+    private async Task LoadAsync() { _loading = true; var result = await Access.ListAsync(); _loading = false; if (result.Succeeded) _users = result.Value!; else Snackbar.Add(result.Error!, Severity.Error); }
+    private void OpenCreate() { _model = NewModel(); _creating = true; _showPassword = false; }
+    private void CloseCreate() => _creating = false;
+    private void GeneratePassword() { _model.TemporaryPassword = $"Nu!7{Convert.ToHexString(RandomNumberGenerator.GetBytes(8))}a"; _showPassword = true; }
+    private async Task CreateAsync() { await _form!.ValidateAsync(); if (!_form.IsValid) return; _saving = true; var result = await Access.CreateAsync(_model); _saving = false; Snackbar.Add(result.Succeeded ? $"{Text["Acesso de"]} {_model.Role.ToLowerInvariant()} {Text["criado. Envie a senha temporaria com seguranca."]}" : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) { _creating = false; await LoadAsync(); } }
+    private async Task SetActiveAsync(TenantUserModel user) { _changingId = user.Id; var result = await Access.SetActiveAsync(user.Id, !user.IsActive); _changingId = null; Snackbar.Add(result.Succeeded ? (result.Value!.IsActive ? Text["Acesso reativado."] : Text["Acesso desativado e sessoes invalidadas."]) : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) await LoadAsync(); }
+    private static CreateUserModel NewModel() => new() { Role = "Contador" };
+}

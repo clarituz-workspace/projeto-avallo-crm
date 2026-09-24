@@ -1,0 +1,369 @@
+@page "/profile"
+@rendermode InteractiveWebAssembly
+@using Microsoft.AspNetCore.Components.Forms
+
+@inject AuthService Auth
+@inject AppLocalizer Text
+@inject ISnackbar Snackbar
+@inject GeoLocationService GeoLocation
+
+<PageTitle>@Text["Meu perfil"] | Avallo</PageTitle>
+
+<AppShellLayout PageContext="@Text["Meu perfil"]">
+
+    <div class="page-container profile-page">
+
+        <header class="page-header">
+            <div>
+                <MudText Typo="Typo.body1">
+                    @Text["Gerencie sua identidade dentro do workspace."]
+                </MudText>
+            </div>
+        </header>
+
+        @if (Auth.CurrentUser is { } user)
+        {
+            @if (user.RequiresPasswordChange)
+            {
+                <MudAlert Severity="Severity.Warning"
+                          Variant="Variant.Outlined"
+                          Class="mb-5">
+                    @Text["Sua conta foi criada com uma senha temporaria."]
+                    @Text["Defina uma nova senha pessoal antes de acessar os dados da empresa."]
+                </MudAlert>
+            }
+
+            <section class="profile-grid">
+
+                <aside class="panel profile-summary">
+
+                    <div class="profile-avatar-upload">
+                        @if (!string.IsNullOrWhiteSpace(_photoUrl))
+                        {
+                            <img class="avatar avatar-large profile-photo" src="@_photoUrl" alt="@Text["Foto de perfil"]" />
+                        }
+                        else
+                        {
+                            <div class="avatar avatar-large">@user.Initials</div>
+                        }
+                        <label class="profile-photo-button">
+                            <MudIcon Icon="@Icons.Material.Filled.CameraAlt" />
+                            <span>@Text["Alterar foto"]</span>
+                            <InputFile OnChange="UploadPhotoAsync" accept="image/png,image/jpeg,image/webp" />
+                        </label>
+                    </div>
+
+                    <MudText Typo="Typo.h5">
+                        @user.DisplayName
+                    </MudText>
+
+                    <MudText Typo="Typo.body2">
+                        @user.Email
+                    </MudText>
+
+                    <MudChip T="string"
+                             Color="Color.Primary"
+                             Variant="Variant.Outlined"
+                             Class="mt-4">
+                         <MudIcon Icon="@Icons.Material.Filled.Badge"  />
+                        @Text[user.PrimaryRole]
+                    </MudChip>
+
+                    <MudDivider Class="my-6" />
+
+                    <div class="profile-meta">
+                        <span>@Text["ID do workspace"]</span>
+                        <code>@user.TenantId.ToString()[..8]</code>
+                    </div>
+
+                    <div class="profile-meta">
+                        <span>@Text["Status da conta"]</span>
+                        <strong class="status-active">@Text["Ativa"]</strong>
+                    </div>
+
+                    <MudDivider Class="my-6" />
+
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">
+                         <MudIcon Icon="@Icons.Material.Filled.LocationOn" Class="mud-icon-size-small mr-1"  />
+                        @Text["Localizacao"]
+                    </MudText>
+
+                    @if (_loadingGeo)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    }
+                    else if (_geoLocation is not null)
+                    {
+                        <div class="profile-meta">
+                            <span>@Text["Cidade"]</span>
+                            <span>@_geoLocation.City</span>
+                        </div>
+
+                        <div class="profile-meta">
+                            <span>@Text["Estado"]</span>
+                            <span>@_geoLocation.Region</span>
+                        </div>
+
+                        <div class="profile-meta">
+                            <span>@Text["Pais"]</span>
+                            <span>@_geoLocation.CountryName</span>
+                        </div>
+
+                        <div class="profile-meta">
+                            <span>@Text["Continente"]</span>
+                            <span>@_geoLocation.Continent</span>
+                        </div>
+
+                        <div class="profile-meta">
+                            <span>@Text["Fuso horario"]</span>
+                            <span>@_geoLocation.Timezone</span>
+                        </div>
+                    }
+
+                </aside>
+
+                <article class="panel profile-form-panel">
+
+                    <div class="panel-heading">
+                        <div>
+                            <MudText Typo="Typo.h5">
+                                @Text["Informacoes pessoais"]
+                            </MudText>
+
+                            <MudText Typo="Typo.body2">
+                                @Text["Esses dados identificam voce para sua equipe."]
+                            </MudText>
+                        </div>
+                    </div>
+
+                    <MudForm @ref="_form">
+
+                        <MudTextField @bind-Value="_displayName"
+                                      Label="@Text["Nome completo"]"
+                                      Variant="Variant.Outlined"
+                                      Required
+                                      RequiredError="@Text["Informe seu nome."]"
+                                      Class="mb-4" />
+
+                        <MudTextField Value="@user.Email"
+                                      Label="@Text["E-mail"]"
+                                      Variant="Variant.Outlined"
+                                      ReadOnly
+                                      HelperText="@Text["O e-mail de acesso nao pode ser alterado por aqui."]" />
+
+                        <div class="form-actions profile-actions">
+                            <MudTooltip Text="@Text["Salvar nome completo no perfil"]" Placement="Placement.Bottom">
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           Disabled="_saving"
+                                           OnClick="SaveAsync">
+                                    @Text["Salvar alteracoes"]
+                                </MudButton>
+                            </MudTooltip>
+                        </div>
+
+                    </MudForm>
+
+                    <MudDivider Class="my-7" />
+
+                    <div class="panel-heading">
+                        <div>
+                            <MudText Typo="Typo.h5">
+                                @Text["Senha de acesso"]
+                            </MudText>
+
+                            <MudText Typo="Typo.body2">
+                                @Text["Use pelo menos 12 caracteres, com maiuscula, minuscula, numero e simbolo."]
+                            </MudText>
+                        </div>
+                    </div>
+
+                    <MudForm @ref="_passwordForm">
+
+                        <MudTextField @bind-Value="_currentPassword"
+                                      Label="@Text["Senha atual"]"
+                                      InputType="InputType.Password"
+                                      Variant="Variant.Outlined"
+                                      Required
+                                      Class="mb-3" />
+
+                        <MudTextField @bind-Value="_newPassword"
+                                      Label="@Text["Nova senha"]"
+                                      InputType="InputType.Password"
+                                      Variant="Variant.Outlined"
+                                      Required
+                                      Class="mb-3" />
+
+                        <MudTextField @bind-Value="_confirmPassword"
+                                      Label="@Text["Confirmar nova senha"]"
+                                      InputType="InputType.Password"
+                                      Variant="Variant.Outlined"
+                                      Required
+                                      Class="mb-3" />
+
+                        <MudTooltip Text="@Text["Atualizar senha de acesso"]" Placement="Placement.Bottom">
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       Disabled="_changingPassword"
+                                       OnClick="ChangePasswordAsync">
+                                @Text["Alterar senha"]
+                            </MudButton>
+                        </MudTooltip>
+
+                    </MudForm>
+
+                    <MudDivider Class="my-7" />
+
+                    <div class="security-row">
+
+                        <span class="metric-icon">
+                            <MudTooltip Text="@Text["Sua sessao e protegida por JWT e cookies seguros"]" Placement="Placement.Top">
+                                <MudIcon Icon="@Icons.Material.Filled.Security"  />
+                            </MudTooltip>
+                        </span>
+
+                        <div>
+                            <strong>@Text["Sessao protegida"]</strong>
+                            <small>
+                                @Text["Access token temporario e renovacao segura por cookie."]
+                            </small>
+                        </div>
+
+                        <MudIcon Icon="@Icons.Material.Filled.VerifiedUser"
+                                  Color="Color.Tertiary"
+                                  Size="Size.Small"  />
+                        <MudText Typo="Typo.body2" Class="ml-1">@Text["Usuário verificado"]</MudText>
+
+                    </div>
+
+                </article>
+
+            </section>
+        }
+
+    </div>
+
+</AppShellLayout>
+
+@code
+{
+    private MudForm? _form;
+    private MudForm? _passwordForm;
+
+    private string _displayName = string.Empty;
+
+    private string _currentPassword = string.Empty;
+    private string _newPassword = string.Empty;
+    private string _confirmPassword = string.Empty;
+
+    private bool _saving;
+    private bool _changingPassword;
+    private string? _photoUrl;
+    private bool _uploadingPhoto;
+
+    private GeoLocationModel? _geoLocation;
+    private bool _loadingGeo = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!OperatingSystem.IsBrowser())
+            return;
+        await Auth.InitializeAsync();
+
+        _displayName = Auth.CurrentUser?.DisplayName ?? string.Empty;
+        var photo = await Auth.GetAsync<ProfilePhotoResponse>("api/auth/me/photo");
+        if (photo.Succeeded)
+            _photoUrl = photo.Value?.Url;
+
+        _geoLocation = await GeoLocation.GetLocationAsync();
+        _loadingGeo = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        await _form!.ValidateAsync();
+
+        if (!_form.IsValid)
+            return;
+
+        _saving = true;
+
+        var result = await Auth.UpdateProfileAsync(_displayName);
+
+        _saving = false;
+
+        Snackbar.Add(
+            result.Succeeded
+                ? Text["Perfil atualizado."]
+                : result.Error!,
+            result.Succeeded
+                ? Severity.Success
+                : Severity.Error);
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        await _passwordForm!.ValidateAsync();
+
+        if (!_passwordForm.IsValid)
+            return;
+
+        if (_newPassword != _confirmPassword)
+        {
+            Snackbar.Add(
+                Text["A confirmacao da nova senha nao confere."],
+                Severity.Warning);
+
+            return;
+        }
+
+        _changingPassword = true;
+
+        var result = await Auth.ChangePasswordAsync(
+            _currentPassword,
+            _newPassword);
+
+        _changingPassword = false;
+
+        Snackbar.Add(
+            result.Succeeded
+                ? Text["Senha alterada com sucesso."]
+                : result.Error!,
+            result.Succeeded
+                ? Severity.Success
+                : Severity.Error);
+
+        if (result.Succeeded)
+        {
+            _currentPassword = string.Empty;
+            _newPassword = string.Empty;
+            _confirmPassword = string.Empty;
+        }
+    }
+
+    private async Task UploadPhotoAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file is null || file.Size > 2 * 1024 * 1024)
+        {
+            Snackbar.Add(Text["A foto deve ter no maximo 2 MB."], Severity.Warning);
+            return;
+        }
+
+        _uploadingPhoto = true;
+        await using var stream = file.OpenReadStream(2 * 1024 * 1024);
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory);
+        var result = await Auth.PostFileAsync<ProfilePhotoResponse>("api/auth/me/photo", memory.ToArray(), file.Name, file.ContentType);
+        _uploadingPhoto = false;
+        if (result.Succeeded)
+        {
+            _photoUrl = result.Value!.Url;
+            Snackbar.Add(Text["Foto de perfil atualizada."], Severity.Success);
+        }
+        else
+            Snackbar.Add(result.Error!, Severity.Error);
+    }
+
+    private sealed record ProfilePhotoResponse(string Url);
+}

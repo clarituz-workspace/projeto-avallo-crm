@@ -1,0 +1,96 @@
+@page "/assistant"
+@rendermode InteractiveWebAssembly
+@inject ChatService Chat
+@inject AuthService Auth
+@inject AppLocalizer Text
+@inject ISnackbar Snackbar
+
+<PageTitle>@Text["Assistente"] | Avallo</PageTitle>
+
+<AppShellLayout PageContext="Assistente Avallo">
+    <div class="assistant-page">
+        <div class="assistant-chat-shell">
+            <header class="assistant-chat-header">
+                <div class="assistant-brand-mark"><MudIcon Icon="@Icons.Material.Filled.AutoAwesome"  /></div>
+                <div><strong>Avallo</strong><span>@Text["Assistente inteligente"]</span></div>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary">Beta</MudChip>
+            </header>
+
+            <div class="assistant-messages" aria-live="polite">
+                @if (_messages.Count == 0)
+                {
+                    <div class="assistant-empty">
+                        <MudText Typo="Typo.h3">@Text["Como posso ajudar?"]</MudText>
+                        <MudText Typo="Typo.body1">@Text["Converse com o Avallo sobre sua operacao."]</MudText>
+                        <div class="assistant-suggestions">
+                            <button type="button" @onclick='() => UseSuggestion(Text["Como funciona o Avallo?"])'>@Text["Como funciona o Avallo?"]</button>
+                            <button type="button" @onclick='() => UseSuggestion(Text["Como organizar minha operacao?"])'>@Text["Organizar minha operacao"]</button>
+                            <button type="button" @onclick='() => UseSuggestion(Text["Quais relatorios estao disponiveis?"])'>@Text["Relatorios disponiveis"]</button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var message in _messages)
+                    {
+                        @if (message.Role == "user")
+                        {
+                            <div class="assistant-message user"><div class="assistant-user-bubble"><div>@message.Content</div><span class="assistant-avatar">V</span></div></div>
+                        }
+                        else
+                        {
+                            <div class="assistant-message assistant"><div class="assistant-message-inner"><span class="assistant-avatar">A</span><div>@message.Content</div></div></div>
+                        }
+                    }
+                }
+                @if (_sending)
+                {
+                    <div class="assistant-message assistant"><div class="assistant-message-inner"><span class="assistant-avatar">A</span><div class="assistant-typing"><i></i><i></i><i></i></div></div></div>
+                }
+            </div>
+
+            <div class="assistant-composer-wrap">
+                <div class="assistant-composer">
+                    <MudTextField @bind-Value="_draft" Placeholder="@Text["Envie uma mensagem..."]" Variant="Variant.Text" Lines="1" Disabled="@_sending" OnKeyDown="HandleKeyDown" />
+                    <MudIconButton Color="Color.Primary" Class="assistant-send" Disabled="@(_sending || string.IsNullOrWhiteSpace(_draft))" OnClick="SendAsync" aria-label="@Text["Enviar mensagem"]"><MudIcon Icon="@Icons.Material.Filled.ArrowUpward"  /></MudIconButton>
+                </div>
+                 <MudText Typo="Typo.caption" Class="assistant-disclaimer">@Text["O Avallo pode cometer erros. Verifique informacoes importantes."]</MudText>
+            </div>
+        </div>
+    </div>
+</AppShellLayout>
+
+@code {
+    private readonly List<ChatMessageModel> _messages = [];
+    private string _draft = string.Empty;
+    private bool _sending;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!OperatingSystem.IsBrowser()) return;
+        await Auth.InitializeAsync();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && !args.ShiftKey)
+            await SendAsync();
+    }
+
+    private async Task SendAsync()
+    {
+        var content = _draft.Trim();
+        if (_sending || content.Length == 0) return;
+        _messages.Add(new ChatMessageModel("user", content));
+        _draft = string.Empty;
+        _sending = true;
+        var result = await Chat.SendAsync(_messages);
+        _sending = false;
+        if (result.Succeeded)
+            _messages.Add(new ChatMessageModel("assistant", result.Value!.Answer));
+        else
+            Snackbar.Add(result.Error ?? Text["Nao foi possivel consultar o assistente."], Severity.Error);
+    }
+
+    private void UseSuggestion(string suggestion) => _draft = suggestion;
+}

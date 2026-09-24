@@ -1,0 +1,86 @@
+@page "/login"
+@layout AuthLayout
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@inject AuthService Auth
+@inject NavigationManager Navigation
+@inject AppLocalizer Text
+
+<PageTitle>@Text["Entrar"] | Avallo</PageTitle>
+
+<div class="form-heading">
+    <MudText Typo="Typo.overline" Color="Color.Primary">@Text["Bem-vindo de volta"]</MudText>
+    <MudText Typo="Typo.h3">@Text["Entre no seu workspace"]</MudText>
+    <MudText Typo="Typo.body1">@Text["Acompanhe sua operacao e mantenha a equipe alinhada."]</MudText>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Dense Class="mb-5">@_error</MudAlert>
+}
+
+<MudForm @ref="_form" Model="Model">
+    <MudTextField @bind-Value="Model.Email" Label="@Text["E-mail profissional"]" AdornmentIcon="@Icons.Material.Outlined.Email"
+                       Variant="Variant.Outlined" InputType="InputType.Email" Class="mb-3" />
+    <MudTextField @bind-Value="Model.Password" Label="@Text["Senha"]"
+                       Variant="Variant.Outlined" InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                       Adornment="Adornment.End" AdornmentIcon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                       OnAdornmentClick="TogglePassword" />
+    <div class="form-assist"><MudCheckBox T="bool" @bind-Value="_remember" Label="@Text["Manter conectado"]" /><MudLink Href="#">@Text["Esqueci minha senha"]</MudLink></div>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Size="Size.Large" Class="primary-cta"
+               Disabled="_busy" OnClick="SubmitAsync">
+        @if (_busy) { <MudProgressCircular Indeterminate Size="Size.Small" Class="mr-2" /> }
+        @Text["Entrar no workspace"]
+    </MudButton>
+</MudForm>
+
+<div class="divider"><span>@Text["ou continue com"]</span></div>
+<MudButton Variant="Variant.Outlined" FullWidth Size="Size.Large"
+           Class="google-button" OnClick="LoginWithGoogle">
+    <img src="google-g.svg" alt="" aria-hidden="true" class="google-button-icon" />
+    @Text["Continuar com o Google"]
+</MudButton>
+
+<MudText Align="MudBlazor.Align.Center" Class="form-footer">@Text["Ainda nao tem uma conta?"] <MudLink Href="/register">@Text["Criar workspace"]</MudLink></MudText>
+
+@code {
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+    [SupplyParameterFromQuery] public string? Error { get; set; }
+    private readonly LoginModel Model = new();
+    private MudForm? _form;
+    private bool _showPassword;
+    private bool _remember = true;
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(Error))
+            _error = Error;
+        if (!OperatingSystem.IsBrowser())
+            return;
+        await Auth.InitializeAsync();
+        if (Auth.IsAuthenticated)
+            Navigation.NavigateTo("/dashboard", replace: true);
+    }
+
+    private void TogglePassword() => _showPassword = !_showPassword;
+    private void LoginWithGoogle() => Navigation.NavigateTo(Auth.GetGoogleLoginUrl("Meu workspace"), forceLoad: true);
+
+    private async Task SubmitAsync()
+    {
+        await _form!.ValidateAsync();
+        if (!_form.IsValid) return;
+        _busy = true;
+        _error = null;
+        var result = await Auth.LoginAsync(Model);
+        _busy = false;
+        if (result.Succeeded)
+            Navigation.NavigateTo(SafeReturnUrl(), replace: true);
+        else
+            _error = result.Error;
+    }
+
+    private string SafeReturnUrl() => !string.IsNullOrWhiteSpace(ReturnUrl) && !ReturnUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+        ? $"/{ReturnUrl.TrimStart('/')}"
+        : "/dashboard";
+}

@@ -1,0 +1,113 @@
+.update-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2500;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgb(15 23 42 / 68%);
+    backdrop-filter: blur(4px);
+}
+
+.update-modal {
+    width: min(36rem, 100%);
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    color: #181818;
+    background: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 1rem;
+    box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 28%);
+}
+
+.update-modal header {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid #ececec;
+}
+
+.update-modal header p,
+.update-modal h2,
+.update-modal h3 {
+    margin: 0;
+}
+
+.update-modal header p {
+    color: #666;
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.update-modal h2 {
+    margin-top: .2rem;
+    font-size: 1.45rem;
+}
+
+.update-modal-icon {
+    display: grid;
+    width: 3rem;
+    height: 3rem;
+    place-items: center;
+    color: #fff;
+    background: #252525;
+    border-radius: .75rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.update-modal-content {
+    padding: 1.5rem;
+}
+
+.update-version {
+    display: inline-flex;
+    gap: .5rem;
+    margin: 0 0 1.5rem;
+    padding: .5rem .75rem;
+    background: #f3f3f2;
+    border-radius: .5rem;
+}
+
+.update-modal-content h3 {
+    font-size: 1rem;
+}
+
+.update-modal-content ul {
+    margin: .75rem 0 0;
+    padding-left: 1.25rem;
+}
+
+.update-modal-content li + li {
+    margin-top: .5rem;
+}
+
+.update-modal footer {
+    display: flex;
+    justify-content: flex-end;
+    padding: 1rem 1.5rem 1.5rem;
+}
+
+.update-modal footer button {
+    min-width: 7rem;
+    padding: .7rem 1.2rem;
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    background: #252525;
+    border: 0;
+    border-radius: .55rem;
+    cursor: pointer;
+}
+
+.update-modal footer button:hover {
+    background: #000;
+}
+
+.update-modal footer button:focus-visible {
+    outline: 3px solid #a3a3a3;
+    outline-offset: 2px;
+}

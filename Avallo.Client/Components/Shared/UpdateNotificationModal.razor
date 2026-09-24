@@ -1,0 +1,113 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.AspNetCore.Http.Connections
+@implements IAsyncDisposable
+@inject NavigationManager Navigation
+@inject AuthService Auth
+@inject AppLocalizer Text
+
+@if (_isVisible)
+{
+    <div class="update-modal-overlay" role="presentation" @onclick="Close">
+        <section class="update-modal"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="update-modal-title"
+                 @onclick:stopPropagation>
+            <header>
+                <span class="update-modal-icon" aria-hidden="true">↑</span>
+                <div>
+                    <p>@Text["Atualizacao do sistema"]</p>
+                    <h2 id="update-modal-title">@Text["Nova atualizacao disponivel"]</h2>
+                </div>
+            </header>
+
+            <div class="update-modal-content">
+                 <p class="update-version"><strong>@Text["Versao"]</strong> @_version</p>
+                 <h3>@Text["Novidades"]</h3>
+                @if (_releaseNotes.Count == 0)
+                {
+                     <p>@Text["Nenhuma nota de versao foi informada."]</p>
+                }
+                else
+                {
+                    <ul>
+                        @foreach (var note in _releaseNotes)
+                        {
+                            <li>@note</li>
+                        }
+                    </ul>
+                }
+            </div>
+
+            <footer>
+                <button type="button" @onclick="Close">@Text["Fechar"]</button>
+            </footer>
+        </section>
+    </div>
+}
+
+@code {
+    private HubConnection? _connection;
+    private bool _isVisible;
+    private string _version = string.Empty;
+    private IReadOnlyList<string> _releaseNotes = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!OperatingSystem.IsBrowser())
+            return;
+
+        _connection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/updateHub"), options =>
+            {
+                options.AccessTokenProvider = Auth.GetAccessTokenAsync;
+                options.Transports = HttpTransportType.WebSockets;
+                options.SkipNegotiation = true;
+            })
+            .WithAutomaticReconnect([
+                TimeSpan.Zero,
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(15)])
+            .Build();
+
+        _connection.On<string, string>("OnUpdateReceived", (version, releaseNotes) =>
+        {
+            // SignalR pode executar o callback fora do contexto do renderer.
+            // InvokeAsync serializa a mudança de estado no dispatcher do Blazor.
+            return InvokeAsync(() =>
+            {
+                _version = version;
+                _releaseNotes = ParseReleaseNotes(releaseNotes);
+                _isVisible = true;
+                StateHasChanged();
+            });
+        });
+
+        try
+        {
+            await _connection.StartAsync();
+        }
+        catch
+        {
+            // A reconexão automática assume interrupções transitórias da rede/deploy.
+        }
+    }
+
+    private void Close() => _isVisible = false;
+
+    private static IReadOnlyList<string> ParseReleaseNotes(string releaseNotes) =>
+        string.IsNullOrWhiteSpace(releaseNotes)
+            ? []
+            : releaseNotes
+                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(note => note.TrimStart('-', '•', '*', ' '))
+                .Where(note => !string.IsNullOrWhiteSpace(note))
+                .ToArray();
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_connection is not null)
+            await _connection.DisposeAsync();
+    }
+}

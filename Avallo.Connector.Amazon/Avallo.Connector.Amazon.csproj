@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Publicado em Avallo.Web/connectors por Directory.Build.targets. -->
+    <IsConnectorPlugin>true</IsConnectorPlugin>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Avallo.Connectors.Abstractions\Avallo.Connectors.Abstractions.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.*" />
+  </ItemGroup>
+</Project>

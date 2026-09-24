@@ -1,0 +1,63 @@
+@typeparam TItem
+@inject AppLocalizer Text
+
+<div class="app-quickgrid-shell @Class">
+    <QuickGrid TGridItem="TItem"
+               @ref="_grid"
+               Items="@Items"
+               ItemsProvider="@ItemsProvider"
+               ItemKey="@ItemKey"
+               Pagination="@_pagination"
+               Class="app-quickgrid"
+               Virtualize="@Virtualize"
+               OverscanCount="@OverscanCount">
+        @Columns
+    </QuickGrid>
+    @if (Items is not null && !Items.Any())
+    {
+        <div class="app-grid-empty">
+            @if (EmptyContent is not null) { @EmptyContent }
+            else { <span>@Text["Nenhum registro encontrado."]</span> }
+        </div>
+    }
+    @if (Paginate)
+    {
+        <div class="app-grid-pager">
+            <Paginator State="@_pagination" />
+        </div>
+    }
+</div>
+
+@code {
+    private readonly PaginationState _pagination = new();
+    private QuickGrid<TItem>? _grid;
+
+    [Parameter, EditorRequired] public RenderFragment Columns { get; set; } = default!;
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+    [Parameter] public IQueryable<TItem>? Items { get; set; }
+    [Parameter] public GridItemsProvider<TItem>? ItemsProvider { get; set; }
+    [Parameter] public Func<TItem, object>? ItemKey { get; set; }
+    [Parameter] public int PageSize { get; set; } = 10;
+    [Parameter] public bool Paginate { get; set; } = true;
+    [Parameter] public bool Virtualize { get; set; }
+    [Parameter] public int OverscanCount { get; set; } = 3;
+    [Parameter] public string? Class { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _pagination.ItemsPerPage = Math.Max(1, PageSize);
+    }
+
+    public async Task RefreshAsync()
+    {
+        if (_grid is not null)
+            await _grid.RefreshDataAsync();
+    }
+
+    public async Task ResetAsync()
+    {
+        await _pagination.SetCurrentPageIndexAsync(0);
+        if (_grid is not null)
+            await _grid.RefreshDataAsync();
+    }
+}

@@ -1,0 +1,237 @@
+@page "/connectors"
+@rendermode InteractiveWebAssembly
+@inject ConnectorService ConnectorsService
+@inject AuthService Auth
+@inject AppLocalizer Text
+@inject ISnackbar Snackbar
+@inject IJSRuntime JavaScript
+
+<PageTitle>@Text["Conectores"] | Avallo</PageTitle>
+
+<AppShellLayout PageContext="@Text["Conectores"]">
+<div class="page-container connectors-page">
+    <header class="page-header">
+        <div><MudText Typo="Typo.overline" Color="Color.Primary">@Text["Camada modular"]</MudText><MudText Typo="Typo.h3">@Text["Marketplaces conectados"]</MudText></div>
+        <div class="connector-contract-badge"><MudIcon Icon="@Icons.Material.Filled.Extension"  /><span>@Text["Contrato"]</span></div>
+    </header>
+
+    <MarketplaceCarousel Connectors="@_available" />
+
+    @if (_loading)
+    {
+        <div class="page-container connectors-page">
+            <header class="page-header">
+                <div>
+                    <MudSkeleton Width="120px" Height="20px" Class="mb-2" />
+                    <MudSkeleton Width="300px" Height="40px" />
+                </div>
+            </header>
+
+            <section class="connector-section mt-6">
+                <MudSkeleton Width="150px" Height="24px" Class="mb-4" />
+                <div class="connection-grid">
+                    <article class="panel connection-card">
+                        <div class="d-flex align-center mb-4">
+                            <MudSkeleton SkeletonType="SkeletonType.Circle" Width="48px" Height="48px" Class="mr-3" />
+                            <div>
+                                <MudSkeleton Width="150px" Height="20px" Class="mb-1" />
+                                <MudSkeleton Width="100px" Height="15px" />
+                            </div>
+                        </div>
+                        <MudSkeleton Width="100%" Height="15px" Class="mb-2" />
+                        <MudSkeleton Width="80%" Height="15px" Class="mb-4" />
+                        <MudSkeleton Width="100%" Height="36px" />
+                    </article>
+                    <article class="panel connection-card">
+                        <div class="d-flex align-center mb-4">
+                            <MudSkeleton SkeletonType="SkeletonType.Circle" Width="48px" Height="48px" Class="mr-3" />
+                            <div>
+                                <MudSkeleton Width="150px" Height="20px" Class="mb-1" />
+                                <MudSkeleton Width="100px" Height="15px" />
+                            </div>
+                        </div>
+                        <MudSkeleton Width="100%" Height="15px" Class="mb-2" />
+                        <MudSkeleton Width="80%" Height="15px" Class="mb-4" />
+                        <MudSkeleton Width="100%" Height="36px" />
+                    </article>
+                </div>
+            </section>
+        </div>
+    }
+    else
+    {
+        <section class="connector-section">
+            <div class="section-heading">
+                <div>
+                    <MudText Typo="Typo.h5">@Text["Conectar marketplace"]</MudText>
+                    <MudText Typo="Typo.body2">@Text["Escolha um canal para integrar sua operação B2B."]</MudText>
+                </div>
+                <MudChip T="string" Size="Size.Small" Color="Color.Primary">@_available.Length @Text["conectores"]</MudChip>
+            </div>
+            @if (_available.Length == 0)
+            {
+                <div class="panel module-empty"><span class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.ExtensionOff"  /></span><div><strong>@Text["Nenhum plugin instalado"]</strong><small>@Text["Publique o DLL de um modulo na pasta configurada em Connectors:PluginPath. O Core permanece inalterado."]</small></div></div>
+            }
+            else
+            {
+                <MudGrid Spacing="3">
+                    @foreach (var connector in _available)
+                    {
+                        <MudItem xs="12" sm="6" md="4">
+                             <ConnectorCard Name="@connector.DisplayName"
+                                            Image="@(connector.Presentation?.LogoUrl ?? string.Empty)"
+                                            Description="@(connector.Presentation?.Tagline ?? connector.DisplayName)"
+                                            ConnectorName="@connector.Name"
+                                            Connection="@ConnectionFor(connector.Name)"
+                                            CanSync="@CanWrite"
+                                            Syncing="@(_syncingId == ConnectionFor(connector.Name)?.Id)"
+                                            OnConnect="() => ConnectAsync(connector)"
+                                            OnSync="SyncAsync"
+                                            OnDisconnect="DisconnectAsync" />
+                        </MudItem>
+                    }
+                </MudGrid>
+            }
+        </section>
+
+        <section class="connector-section">
+            <div class="section-heading"><div><MudText Typo="Typo.h5">@Text["Modulos instalados"]</MudText><MudText Typo="Typo.body2">@Text["Plugins descobertos no startup pelo contrato padronizado."]</MudText></div><MudChip T="string" Size="Size.Small">@_available.Length @Text["disponiveis"]</MudChip></div>
+            @if (_available.Length == 0)
+            {
+                <div class="panel module-empty"><span class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.ExtensionOff"  /></span><div><strong>@Text["Nenhum plugin instalado"]</strong><small>@Text["Publique o DLL de um modulo na pasta configurada em Connectors:PluginPath. O Core permanece inalterado."]</small></div></div>
+            }
+            else
+            {
+                <div class="module-grid">
+                    @foreach (var connector in _available)
+                    {
+                        <article class="panel module-card @(connector.IsConfigured ? string.Empty : "connector-development")">
+                            <div class="connection-logo muted">
+                                @if (connector.Presentation?.LogoUrl is { Length: > 0 } logo)
+                                {
+                                    <img src="@logo" alt="@connector.DisplayName" />
+                                }
+                                else
+                                {
+                                    @Initials(connector.DisplayName)
+                                }
+                            </div>
+                            <div>
+                                <MudText Typo="Typo.h6">@connector.DisplayName</MudText>
+                                <MudText Typo="Typo.body2">@connector.Name &middot; v@connector.Version @if (connector.UsesOAuth) { <span>&middot; OAuth 2.0</span> }</MudText>
+                                @if (!connector.IsConfigured && connector.ConfigurationHint is { Length: > 0 } hint)
+                                {
+                                    <small class="development-note">@hint</small>
+                                }
+                            </div>
+                            <MudSpacer />
+                            @if (!connector.IsConfigured)
+                            {
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="development-chip"><MudIcon Icon="@Icons.Material.Filled.LockClock"  />@Text["Pendente"]</MudChip>
+                            }
+                            else if (CanWrite)
+                            {
+                                <MudTooltip Text="@Text["Iniciar conexao com o marketplace"]" Placement="Placement.Bottom">
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="@(_oauthConnector == connector.Name)" OnClick="() => ConnectAsync(connector)">@(_oauthConnector == connector.Name ? Text["Redirecionando..."] : Text["Conectar"])</MudButton>
+                                </MudTooltip>
+                            }
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+
+        @if (_selected is not null)
+        {
+            <div class="connector-modal-backdrop" @onclick="CloseConnector">
+                <article class="connector-modal panel" @onclick:stopPropagation>
+                    <div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Conectar"] @_selected.DisplayName</MudText><MudText Typo="Typo.body2">@Text["As credenciais sao enviadas diretamente ao plugin e nunca sao persistidas pelo Core."]</MudText></div><MudIconButton OnClick="CloseConnector" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div>
+                    @foreach (var field in _selected.CredentialFields ?? [])
+                    {
+                        <MudTextField T="string" Value="@Credential(field.Name)" ValueChanged="value => SetCredential(field.Name, value)" Label="@field.Label" Variant="Variant.Outlined" Required="@field.Required" InputType="@(field.Secret ? InputType.Password : InputType.Text)" Class="mb-3" />
+                    }
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Disabled="_connecting" OnClick="AuthenticateAsync">@(_connecting ? Text["Autenticando..."] : Text["Autenticar e conectar"])</MudButton>
+                </article>
+            </div>
+        }
+    }
+</div>
+</AppShellLayout>
+
+@code {
+    private bool CanWrite => Auth.CurrentUser?.Roles.Any(x => x is "Admin" or "Vendedor") == true;
+    [SupplyParameterFromQuery] public bool Connected { get; set; }
+    [SupplyParameterFromQuery] public string? OAuthError { get; set; }
+    [SupplyParameterFromQuery] public string? OAuthMessage { get; set; }
+    private ConnectorDescriptorModel[] _available = [];
+    private MarketplaceConnectionModel[] _connections = [];
+    private ConnectorDescriptorModel? _selected;
+    private readonly Dictionary<string, string> _credentials = new(StringComparer.OrdinalIgnoreCase);
+    private bool _loading = true;
+    private bool _connecting;
+    private Guid? _syncingId;
+    private string? _oauthConnector;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!OperatingSystem.IsBrowser())
+            return;
+        await JavaScript.InvokeVoidAsync("nucleoOAuth.register");
+        await ReloadAsync();
+        _loading = false;
+        if (Connected)
+        {
+            Snackbar.Add(Text["Marketplace conectado com sucesso."], Severity.Success);
+            await JavaScript.InvokeVoidAsync("nucleoSounds.playBell");
+        }
+        if (!string.IsNullOrWhiteSpace(OAuthError))
+            Snackbar.Add($"{Text["Nao foi possivel concluir o OAuth:"]} {OAuthError}. {OAuthMessage}", Severity.Error);
+    }
+    private async Task ReloadAsync() { var available = await ConnectorsService.GetAvailableAsync(); if (available.Succeeded) _available = available.Value!; var connections = await ConnectorsService.GetConnectionsAsync(); if (connections.Succeeded) _connections = connections.Value!; }
+    private static string Initials(string name) => name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
+    private static Color StatusColor(string status) => status switch { "Connected" => Color.Success, "Error" => Color.Error, _ => Color.Default };
+    private MarketplaceConnectionModel? ConnectionFor(string connectorName) => _connections.FirstOrDefault(x =>
+        x.ConnectorName.Equals(connectorName, StringComparison.OrdinalIgnoreCase) &&
+        !x.Status.Equals("Revoked", StringComparison.OrdinalIgnoreCase));
+    private async Task ConnectAsync(ConnectorDescriptorModel connector)
+    {
+        // O estado de prontidao vem do proprio plugin (ConnectorDescriptor.IsConfigured).
+        // A pagina nunca decide isso por nome de marketplace.
+        if (!connector.IsConfigured)
+        {
+            Snackbar.Add(connector.ConfigurationHint is { Length: > 0 } hint
+                ? $"{connector.DisplayName}: {hint}"
+                : $"{Text["A integracao"]} {connector.DisplayName} {Text["esta pendente."]}", Severity.Info);
+            return;
+        }
+        if (connector.UsesOAuth)
+        {
+            _oauthConnector = connector.Name;
+            var result = await ConnectorsService.StartOAuthAsync(connector.Name);
+            if (result.Succeeded)
+                await JavaScript.InvokeVoidAsync("nucleoOAuth.open", result.Value!.AuthorizationUrl);
+            else
+            {
+                _oauthConnector = null;
+                Snackbar.Add(result.Error!, Severity.Error);
+            }
+            return;
+        }
+        _selected = connector;
+        _credentials.Clear();
+    }
+    private void CloseConnector() => _selected = null;
+    private string Credential(string name) => _credentials.GetValueOrDefault(name, string.Empty);
+    private void SetCredential(string name, string value) => _credentials[name] = value;
+    private async Task AuthenticateAsync() { if (_selected is null) return; var connectorName = _selected.Name; var soundUrl = _selected.Presentation?.SoundUrl; _connecting = true; var result = await ConnectorsService.AuthenticateAsync(connectorName, _credentials); _connecting = false; Snackbar.Add(result.Succeeded ? $"{_selected.DisplayName} conectado com sucesso." : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) { await JavaScript.InvokeVoidAsync("nucleoSounds.playConnector", soundUrl); _selected = null; await ReloadAsync(); } }
+    private async Task SyncAsync(MarketplaceConnectionModel connection) { _syncingId = connection.Id; var result = await ConnectorsService.SyncAsync(connection.Id, DateTimeOffset.Now.AddDays(-30)); _syncingId = null; Snackbar.Add(result.Succeeded ? result.Value!.Queued ? Text["Sincronizacao enfileirada."] : $"{connection.ConnectorName} sincronizado." : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded && !result.Value!.Queued) await ReloadAsync(); }
+    private async Task DisconnectAsync(MarketplaceConnectionModel connection)
+    {
+        if (!await JavaScript.InvokeAsync<bool>("confirm", $"Desconectar {connection.ConnectorName} desta conta?"))
+            return;
+        var result = await ConnectorsService.DisconnectAsync(connection.Id);
+        Snackbar.Add(result.Succeeded ? Text["Conector desconectado."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error);
+        if (result.Succeeded)
+            await ReloadAsync();
+    }
+}

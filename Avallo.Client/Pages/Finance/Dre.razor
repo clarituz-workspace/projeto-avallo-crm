@@ -1,0 +1,157 @@
+@page "/dre"
+@rendermode InteractiveWebAssembly
+@using System.Globalization
+@inject AccountingService Accounting
+@inject ReportService Reports
+@inject AppLocalizer Text
+@inject ISnackbar Snackbar
+
+<PageTitle>@Text["DRE preliminar"] | Avallo</PageTitle>
+
+<AppShellLayout PageContext="@Text["DRE preliminar"]">
+<div class="page-container report-page">
+    <header class="page-header">
+        <div>
+            <MudText Typo="Typo.overline" Color="Color.Primary">@Text["Motor contabil"]</MudText>
+            <MudText Typo="Typo.h3">@Text["DRE preliminar"]</MudText>
+            <MudText Typo="Typo.body1">@Text["Resultado por competencia baseado em pedidos entregues e eventos imutaveis."]</MudText>
+        </div>
+        <MudTooltip Text="@Text["Motor contabil versao 2 com eventos imutaveis"]" Placement="Placement.Bottom">
+            <span class="dre-version"><MudIcon Icon="@Icons.Material.Filled.Verified" Class="mud-icon-size-small"  /> Ledger v2</span>
+        </MudTooltip>
+    </header>
+
+    <section class="filter-panel panel">
+        <div class="filter-title"><MudIcon Icon="@Icons.Material.Filled.DateRange"  /><div><strong>@Text["Periodo contabil"]</strong><small>@Text["Filtre pela data efetiva dos lancamentos."]</small></div></div>
+        <div class="dre-filter-grid">
+            <MudDateRangePicker @bind-DateRange="Period" Label="@Text["Periodo"]" Variant="Variant.Outlined" DateFormat="d" Margin="Margin.Dense" />
+            <MudSelect T="string" @bind-Value="_platform" Label="@Text["Conector"]" Variant="Variant.Outlined" Clearable Margin="Margin.Dense">
+                @foreach (var platform in _platforms) { <MudSelectItem Value="@platform">@platform</MudSelectItem> }
+            </MudSelect>
+            <MudTooltip Text="@Text["Calcular DRE preliminar do periodo"]" Placement="Placement.Bottom">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_loading" OnClick="LoadAsync"><MudIcon Icon="@Icons.Material.Filled.Calculate"  />@Text["Apurar DRE"]</MudButton>
+            </MudTooltip>
+        </div>
+    </section>
+
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-5">
+        @Text["Impostos consideram somente regras fiscais aprovadas e vigentes na data da entrega."]
+    </MudAlert>
+
+    @if (_loading)
+    {
+        <div class="page-container report-page">
+            <section class="dre-summary-grid">
+                @for (int i = 0; i < 4; i++)
+                {
+                    <article class="finance-card">
+                        <MudSkeleton SkeletonType="SkeletonType.Circle" Width="40px" Height="40px" Class="mr-3" />
+                        <div style="flex-grow: 1;">
+                            <MudSkeleton Width="60px" Height="15px" Class="mb-2" />
+                            <MudSkeleton Width="120px" Height="28px" Class="mb-1" />
+                            <MudSkeleton Width="80px" Height="15px" />
+                        </div>
+                    </article>
+                }
+            </section>
+
+            <section class="panel dre-statement mt-6">
+                <div class="panel-heading"><MudSkeleton Width="180px" Height="24px" /></div>
+                <div class="mt-4">
+                    @for (int i = 0; i < 8; i++)
+                    {
+                        <div class="d-flex justify-space-between mb-3">
+                            <MudSkeleton Width="200px" Height="20px" />
+                            <MudSkeleton Width="100px" Height="20px" />
+                        </div>
+                    }
+                </div>
+            </section>
+        </div>
+    }
+    else
+    {
+        <section class="dre-summary-grid">
+            <article class="finance-card"><span class="finance-card-icon billed"><MudIcon Icon="@Icons.Material.Filled.TrendingUp"  /></span><div><MudText Typo="Typo.caption">@Text["RECEITA BRUTA"]</MudText><MudText Typo="Typo.h4">@Money(_data.GrossRevenue)</MudText><small>@Text["Pedidos entregues"]</small></div></article>
+            <article class="finance-card"><span class="finance-card-icon fees"><MudIcon Icon="@Icons.Material.Filled.Undo"  /></span><div><MudText Typo="Typo.caption">@Text["DEDUCOES"]</MudText><MudText Typo="Typo.h4">@Money(_data.SalesDeductions)</MudText><small>@Text["Cancelamentos e devolucoes"]</small></div></article>
+            <article class="finance-card"><span class="finance-card-icon fees"><MudIcon Icon="@Icons.Material.Filled.Receipt"  /></span><div><MudText Typo="Typo.caption">@Text["DESPESAS DE VENDA"]</MudText><MudText Typo="Typo.h4">@Money(_data.SellingExpenses)</MudText><small>@Text["Taxas, comissoes e fretes"]</small></div></article>
+            <article class="finance-card dre-result-card"><span class="finance-card-icon receivable"><MudIcon Icon="@Icons.Material.Filled.AccountBalance"  /></span><div><MudText Typo="Typo.caption">@Text["RESULTADO PRELIMINAR"]</MudText><MudText Typo="Typo.h4">@Money(_data.PreliminaryProfit)</MudText><small>@Text["Antes de CMV e impostos"]</small></div></article>
+        </section>
+
+        <section class="panel dre-statement">
+            <div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Demonstracao do resultado"]</MudText><MudText Typo="Typo.body2">@Text["Estrutura preliminar apurada pelo ledger contabil."]</MudText></div></div>
+            <div class="dre-line"><strong>@Text["Receita bruta de vendas"]</strong><span>@Money(_data.GrossRevenue)</span></div>
+            <div class="dre-line deduction"><span>@Text["(-) Cancelamentos e devolucoes"]</span><span>@Money(_data.SalesDeductions)</span></div>
+            <div class="dre-line deduction"><span>@Text["(-) Impostos sobre vendas"]</span><span>@Money(_data.TaxesOnSales)</span></div>
+            <div class="dre-line subtotal"><strong>@Text["(=) Receita liquida"]</strong><strong>@Money(_data.NetRevenue)</strong></div>
+            <div class="dre-line deduction"><span>@Text["(-) Custo da mercadoria vendida (CMV)"]</span><span>@Money(_data.CostOfGoodsSold)</span></div>
+            <div class="dre-line subtotal"><strong>@Text["(=) Lucro bruto"]</strong><strong>@Money(_data.GrossProfit)</strong></div>
+            <div class="dre-line deduction"><span>@Text["(-) Comissoes de marketplace"]</span><span>@Money(_data.MarketplaceCommission)</span></div>
+            <div class="dre-line deduction"><span>@Text["(-) Taxas de pagamento"]</span><span>@Money(_data.PaymentFees)</span></div>
+            <div class="dre-line deduction"><span>@Text["(-) Fretes do seller"]</span><span>@Money(_data.ShippingExpenses)</span></div>
+            <div class="dre-line deduction"><span>@Text["(-) Outras despesas de venda"]</span><span>@Money(_data.OtherSellingExpenses)</span></div>
+            <div class="dre-line deduction"><span>@Text["(-) Despesas operacionais aprovadas"]</span><span>@Money(_data.OperatingExpenses)</span></div>
+            <div class="dre-line total"><strong>@Text["(=) Resultado preliminar"]</strong><strong>@Money(_data.PreliminaryProfit)</strong></div>
+        </section>
+
+        <section class="panel entries-panel dre-accounts">
+            <div class="entries-toolbar"><div><MudText Typo="Typo.h5">@Text["Balancete de apoio"]</MudText><MudText Typo="Typo.body2">@Text["Partidas que sustentam a demonstracao."]</MudText></div></div>
+            <AppQuickGrid TItem="DreAccountBalanceModel" Items="@_accounts"
+                          ItemKey="@((DreAccountBalanceModel account) => $"{account.AccountCode}|{account.AccountName}")"
+                          PageSize="10">
+                <Columns>
+                    <AppTemplateColumn TItem="DreAccountBalanceModel" Title="@Text["Conta"]" Context="account" Sortable="true" SortBy="@(GridSort<DreAccountBalanceModel>.ByAscending(x => x.AccountCode))"><code>@account.AccountCode</code></AppTemplateColumn>
+                    <AppTemplateColumn TItem="DreAccountBalanceModel" Title="@Text["Descricao"]" Context="account" Sortable="true" SortBy="@(GridSort<DreAccountBalanceModel>.ByAscending(x => x.AccountName))">@account.AccountName</AppTemplateColumn>
+                    <AppTemplateColumn TItem="DreAccountBalanceModel" Title="@Text["Debitos"]" Context="account" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right" Sortable="true" SortBy="@(GridSort<DreAccountBalanceModel>.ByAscending(x => x.Debit))">@Money(account.Debit)</AppTemplateColumn>
+                    <AppTemplateColumn TItem="DreAccountBalanceModel" Title="@Text["Creditos"]" Context="account" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right" Sortable="true" SortBy="@(GridSort<DreAccountBalanceModel>.ByAscending(x => x.Credit))">@Money(account.Credit)</AppTemplateColumn>
+                    <AppTemplateColumn TItem="DreAccountBalanceModel" Title="@Text["Saldo"]" Context="account" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right" Sortable="true" SortBy="@(GridSort<DreAccountBalanceModel>.ByAscending(x => x.Debit - x.Credit))"><span class="money-cell">@Money(account.Debit - account.Credit)</span></AppTemplateColumn>
+                </Columns>
+            </AppQuickGrid>
+        </section>
+    }
+</div>
+</AppShellLayout>
+
+@code {
+    private PreliminaryDreModel _data = EmptyData;
+    private IQueryable<DreAccountBalanceModel> _accounts = Array.Empty<DreAccountBalanceModel>().AsQueryable();
+    private string[] _platforms = [];
+    private string? _platform;
+    private bool _loading = true;
+    private DateRange Period = new(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1), DateTime.Today);
+    private static PreliminaryDreModel EmptyData => new(null, null, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, []);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!OperatingSystem.IsBrowser())
+            return;
+        var options = await Reports.GetOptionsAsync();
+        if (options.Succeeded) _platforms = options.Value!.Platforms;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (Period.Start is null || Period.End is null) return;
+        _loading = true;
+        var result = await Accounting.GetPreliminaryDreAsync(DateOnly.FromDateTime(Period.Start.Value), DateOnly.FromDateTime(Period.End.Value), _platform);
+        if (result.Succeeded && result.Value is not null)
+        {
+            var accounts = (result.Value.Accounts ?? [])
+                .OfType<DreAccountBalanceModel>()
+                .Where(x => !string.IsNullOrWhiteSpace(x.AccountCode))
+                .ToArray();
+            _data = result.Value with { Accounts = accounts };
+            _accounts = accounts.AsQueryable();
+        }
+        else
+        {
+            _data = EmptyData;
+            _accounts = Array.Empty<DreAccountBalanceModel>().AsQueryable();
+            Snackbar.Add(result.Error ?? Text["Nao foi possivel apurar a DRE."], Severity.Error);
+        }
+        _loading = false;
+    }
+
+    private static string Money(decimal value) => value.ToString("C", CultureInfo.CurrentCulture);
+}

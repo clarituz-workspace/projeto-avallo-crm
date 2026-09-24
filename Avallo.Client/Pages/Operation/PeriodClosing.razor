@@ -1,0 +1,131 @@
+@page "/closing"
+@rendermode InteractiveWebAssembly
+@using System.Globalization
+@using System.Text.Json
+@inject PeriodClosingClient Closing
+@inject AccountingService Accounting
+@inject AuthService Auth
+@inject AppLocalizer Text
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>@Text["Fechamento mensal"] | Avallo</PageTitle>
+
+<AppShellLayout PageContext="@Text["Fechamento mensal"]">
+<div class="page-container closing-page">
+    <header class="page-header"><div><MudText Typo="Typo.overline" Color="Color.Primary">@Text["Governanca contabil"]</MudText><MudText Typo="Typo.h3">@Text["Fechamento mensal"]</MudText><MudText Typo="Typo.body1">@Text["Valide, aprove e preserve uma fotografia imutavel da DRE."]</MudText></div><div class="closing-period-picker"><MudDatePicker @bind-Date="_selectedMonth" Label="@Text["Competencia"]" Variant="Variant.Outlined" DateFormat="MM/yyyy" OpenTo="OpenTo.Year" Margin="Margin.Dense" /><MudTooltip Text="@Text["Criar competencia para fechamento"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_creating" OnClick="OpenPeriodAsync">@Text["Abrir periodo"]</MudButton></MudTooltip></div></header>
+
+    @if (_loading)
+    {
+        <div class="page-container report-page mt-4">
+            <article class="panel mb-6">
+                <div class="d-flex align-center justify-space-between mb-4">
+                    <div>
+                        <MudSkeleton Width="80px" Height="15px" Class="mb-2" />
+                        <MudSkeleton Width="120px" Height="32px" />
+                    </div>
+                    <MudSkeleton Width="100px" Height="24px" />
+                </div>
+                <div class="d-flex gap-4 mt-6">
+                    <MudSkeleton Width="120px" Height="40px" />
+                    <MudSkeleton Width="120px" Height="40px" />
+                    <MudSkeleton Width="120px" Height="40px" />
+                </div>
+            </article>
+        </div>
+    }
+    else if (Current is null)
+    {
+        <section class="panel closing-empty"><span class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.CalendarMonth"  /></span><MudText Typo="Typo.h5">@Text["Competencia ainda nao iniciada"]</MudText><MudText Typo="Typo.body2">@Text["Selecione o mes e abra o periodo para executar o checklist contabil."]</MudText><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenPeriodAsync">@Text["Abrir competencia"]</MudButton></section>
+    }
+    else
+    {
+        <section class="closing-status-card panel">
+            <div class="closing-status-header"><div><MudText Typo="Typo.overline">@Text["COMPETENCIA"]</MudText><MudText Typo="Typo.h4">@Current.Month.ToString("D2")/@Current.Year</MudText><small>@Text["Versao"] @Current.Version</small></div><span class="closing-status @Current.Status.ToLowerInvariant()"><i></i>@StatusLabel(Current.Status)</span></div>
+            <div class="closing-timeline">
+                @foreach (var step in GetSteps()) { <div class="@(StepReached(step.Status) ? "reached" : null)"><span>@if (StepReached(step.Status)) { <MudIcon Icon="@Icons.Material.Filled.Check" Class="mud-icon-size-small"  /> } else { @step.Number }</span><strong>@step.Label</strong></div> }
+            </div>
+            <div class="closing-actions">
+                @if (CanWrite && Current.Status is "Open" or "Validating") { <MudTooltip Text="@Text["Verificar checklist de fechamento"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="ValidateAsync"><MudIcon Icon="@Icons.Material.Filled.FactCheck"  />@Text["Executar validacao"]</MudButton></MudTooltip> }
+                @if (CanReview && Current.Status == "PendingAccountant") { <MudTooltip Text="@Text["Aprovar como contador"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="ApproveAsync"><MudIcon Icon="@Icons.Material.Filled.Approval"  />@Text["Aprovar periodo"]</MudButton></MudTooltip> }
+                @if (CanReview && Current.Status == "Approved") { <MudTooltip Text="@Text["Criar documento imutavel e fechar competencia"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="CloseAsync"><MudIcon Icon="@Icons.Material.Filled.Lock"  />@Text["Gerar snapshot e fechar"]</MudButton></MudTooltip> }
+                @if (IsAdmin && Current.Status is "Approved" or "Closed") { <MudTooltip Text="@Text["Reabrir competencia ja fechada"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Outlined" OnClick="OpenReopen"><MudIcon Icon="@Icons.Material.Filled.LockOpen"  />@Text["Reabrir periodo"]</MudButton></MudTooltip> }
+            </div>
+        </section>
+
+        <section class="closing-metrics">
+            <article class="metric-card"><MudText Typo="Typo.caption">@Text["CHECKS APROVADOS"]</MudText><MudText Typo="Typo.h4">@Current.Checks.Count(x => x.Passed)/@Current.Checks.Length</MudText><MudText Typo="Typo.body2">@Text["Validacoes da ultima execucao"]</MudText></article>
+            <article class="metric-card"><MudText Typo="Typo.caption">@Text["BLOQUEIOS"]</MudText><MudText Typo="Typo.h4">@Current.Checks.Sum(x => x.BlockerCount)</MudText><MudText Typo="Typo.body2">@Text["Pendencias que impedem fechar"]</MudText></article>
+            <article class="metric-card"><MudText Typo="Typo.caption">@Text["SNAPSHOTS"]</MudText><MudText Typo="Typo.h4">@Current.Snapshots.Length</MudText><MudText Typo="Typo.body2">@Text["Revisoes imutaveis preservadas"]</MudText></article>
+        </section>
+
+        @if (_legal is not null)
+        {
+            <section class="panel mb-6">
+                <div class="panel-heading"><div><MudText Typo="Typo.h5">Balanço Patrimonial e distribuição de lucros</MudText><MudText Typo="Typo.body2">Prévia acumulada até @_legal.BalanceSheet.AsOf.ToString("d") e trava legal para saque.</MudText></div><MudChip T="string" Color="@(_legal.BalanceSheet.IsBalanced ? Color.Success : Color.Error)">@(_legal.BalanceSheet.IsBalanced ? "Balanço equilibrado" : "Diferença no balanço")</MudChip></div>
+                <div class="closing-metrics">
+                    <article class="metric-card"><MudText Typo="Typo.caption">ATIVO</MudText><MudText Typo="Typo.h5">@Money(_legal.BalanceSheet.TotalAssets)</MudText></article>
+                    <article class="metric-card"><MudText Typo="Typo.caption">PASSIVO</MudText><MudText Typo="Typo.h5">@Money(_legal.BalanceSheet.TotalLiabilities)</MudText></article>
+                    <article class="metric-card"><MudText Typo="Typo.caption">PATRIMÔNIO LÍQUIDO</MudText><MudText Typo="Typo.h5">@Money(_legal.BalanceSheet.Equity)</MudText></article>
+                    <article class="metric-card"><MudText Typo="Typo.caption">DIFERENÇA</MudText><MudText Typo="Typo.h5">@Money(_legal.BalanceSheet.BalanceDifference)</MudText></article>
+                </div>
+                <MudAlert Severity="@(_legal.WithdrawalGate.Released ? Severity.Success : Severity.Warning)" Variant="Variant.Outlined" Class="mt-4">
+                    <strong>Saque: @WithdrawalStatus(_legal.WithdrawalGate.Status)</strong><br />
+                    Lucro disponível estimado: @Money(_legal.WithdrawalGate.AvailableProfit) · Caixa: @Money(_legal.WithdrawalGate.CashAvailable) · Já autorizado: @Money(_legal.WithdrawalGate.AuthorizedAmount)<br />
+                    @_legal.WithdrawalGate.LegalNotice
+                </MudAlert>
+                @if (CanReview && Current.Status == "Closed" && _legal.BalanceSheet.IsBalanced && _legal.WithdrawalGate.AvailableProfit > 0)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-4" OnClick="OpenWithdrawal">Validar e liberar saque</MudButton>
+                }
+            </section>
+        }
+
+        <section class="panel closing-checklist">
+            <div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Checklist de fechamento"]</MudText><MudText Typo="Typo.body2">@Text["Todos os controles precisam estar aprovados antes da revisao do contador."]</MudText></div>@if (Current.ValidatedAt is not null) { <small>@Text["Validado em"] @Current.ValidatedAt.Value.ToLocalTime().ToString("g")</small> }</div>
+            @if (Current.Checks.Length == 0) { <EmptyReport Icon="@Icons.Material.Filled.Checklist" Text="@Text["Execute a validacao para gerar o checklist desta competencia."]" Compact /> }
+            else { <div class="closing-check-list">@foreach (var check in Current.Checks) { <article class="closing-check @(check.Passed ? "passed" : "blocked")"><span><MudIcon Icon="@(check.Passed ? "check_circle" : "error_outline")"  /></span><div><strong>@Text[check.Description]</strong><small>@(check.Passed ? Text["Controle aprovado"] : $"{check.BlockerCount} {Text["bloqueio(s) encontrado(s)"]}")</small>@if (!check.Passed) { @foreach (var detail in CheckDetails(check)) { <code>@Text[detail]</code> } }</div></article> }</div> }
+        </section>
+
+  <section class="panel entries-panel closing-history"><div class="entries-toolbar"><div><MudText Typo="Typo.h5">@Text["Documentos imutaveis"]</MudText><MudText Typo="Typo.body2">@Text["Cada revisao possui hashes independentes do JSON contabil e do PDF."]</MudText></div></div><AppQuickGrid TItem="DreSnapshotModel" Items="@Current.Snapshots.AsQueryable()" ItemKey="@((DreSnapshotModel item) => item.Id)" PageSize="10" Class="entries-table"><Columns><AppTemplateColumn TItem="DreSnapshotModel" Title="@Text["Revisao"]" Sortable="true" SortBy="@(GridSort<DreSnapshotModel>.ByDescending(x => x.Revision))"><strong>Rev. @context.Revision</strong></AppTemplateColumn><AppTemplateColumn TItem="DreSnapshotModel" Title="@Text["Gerado em"]" Sortable="true" SortBy="@(GridSort<DreSnapshotModel>.ByDescending(x => x.GeneratedAt))">@context.GeneratedAt.ToLocalTime().ToString("g")</AppTemplateColumn><AppTemplateColumn TItem="DreSnapshotModel" Title="@Text["Hash JSON"]"><code class="hash-code">@ShortHash(context.CanonicalJsonSha256)</code></AppTemplateColumn><AppTemplateColumn TItem="DreSnapshotModel" Title="@Text["Hash PDF"]"><code class="hash-code">@ShortHash(context.PdfSha256)</code></AppTemplateColumn><AppTemplateColumn TItem="DreSnapshotModel" Title="@Text["Resultado"]" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right" Sortable="true" SortBy="@(GridSort<DreSnapshotModel>.ByAscending(x => x.Result))"><span class="money-cell">@Money(context.Result)</span></AppTemplateColumn><AppTemplateColumn TItem="DreSnapshotModel"><MudTooltip Text="@Text["Baixar DRE em PDF"]" Placement="Placement.Bottom"><MudIconButton aria-label="@Text["Baixar DRE em PDF"]" OnClick="() => DownloadAsync(context)"><MudIcon Icon="@Icons.Material.Filled.Download"  /></MudIconButton></MudTooltip></AppTemplateColumn></Columns><EmptyContent><EmptyReport Icon="@Icons.Material.Filled.Lock" Text="@Text["O primeiro documento sera criado quando o periodo for fechado."]" Compact /></EmptyContent></AppQuickGrid></section>
+
+        @if (_periods.Length > 1) { <section class="panel closing-period-history"><div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Historico de competencias"]</MudText><MudText Typo="Typo.body2">@Text["Acesse fechamentos e validacoes anteriores."]</MudText></div></div><div class="period-chip-list">@foreach (var period in _periods) { <button class="@(period.Id == Current.Id ? "active" : null)" @onclick="() => SelectPeriod(period)"><strong>@period.Month.ToString("D2")/@period.Year</strong><small>@StatusLabel(period.Status)</small></button> }</div></section> }
+    }
+
+    @if (_reopening) { <div class="connector-modal-backdrop" @onclick="CloseReopen"><article class="connector-modal panel" @onclick:stopPropagation><div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Reabrir competencia"]</MudText><MudText Typo="Typo.body2">@Text["O snapshot existente sera preservado e uma nova versao podera ser fechada."]</MudText></div><MudIconButton OnClick="CloseReopen" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div><MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense Class="mb-4">@Text["A reabertura exige justificativa e fica registrada no historico."]</MudAlert><MudTextField @bind-Value="_reopenReason" Label="@Text["Justificativa"]" Variant="Variant.Outlined" Lines="3" Required Class="mb-3" /><MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Disabled="@string.IsNullOrWhiteSpace(_reopenReason)" OnClick="ReopenAsync">@Text["Confirmar reabertura"]</MudButton></article></div> }
+    @if (_withdrawing) { <div class="connector-modal-backdrop" @onclick="CloseWithdrawal"><article class="connector-modal panel" @onclick:stopPropagation><div class="panel-heading"><div><MudText Typo="Typo.h5">Liberação contábil de saque</MudText><MudText Typo="Typo.body2">Registre a deliberação e o tratamento tributário validado.</MudText></div><MudIconButton OnClick="CloseWithdrawal"><MudIcon Icon="@Icons.Material.Filled.Close" /></MudIconButton></div><MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense Class="mb-4">Em 2026, distribuições podem exigir IRRF e informação na EFD-Reinf. Não marque isenção sem análise do beneficiário e da legislação aplicável.</MudAlert><MudNumericField T="decimal" @bind-Value="_withdrawAmount" Label="Valor" Max="@(_legal?.WithdrawalGate.AvailableProfit ?? 0)" Min="0.01m" Variant="Variant.Outlined" Class="mb-3" /><MudTextField @bind-Value="_beneficiaryName" Label="Beneficiário" Variant="Variant.Outlined" Class="mb-3" /><MudTextField @bind-Value="_beneficiaryTaxId" Label="CPF/CNPJ" Variant="Variant.Outlined" Class="mb-3" /><MudSelect T="string" @bind-Value="_taxTreatment" Label="Tratamento tributário" Variant="Variant.Outlined" Class="mb-3"><MudSelectItem Value="@("NoMonthlyWithholding")">Sem retenção mensal</MudSelectItem><MudSelectItem Value="@("WithholdTenPercent")">Reter 10%</MudSelectItem><MudSelectItem Value="@("Other")">Outro</MudSelectItem></MudSelect><MudCheckBox T="bool" @bind-Value="_irpfExempt" Label="Contador confirma enquadramento como isento de IRPF" /><MudTextField @bind-Value="_legalBasis" Label="Fundamentação legal e contábil" Variant="Variant.Outlined" Lines="4" Class="mb-3" /><MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Disabled="@_busy" OnClick="ReleaseWithdrawalAsync">Confirmar e liberar</MudButton></article></div> }
+</div>
+</AppShellLayout>
+
+@code {
+    private (string Status, string Label, int Number)[] GetSteps() => [("Open", Text["Aberto"], 1), ("PendingAccountant", Text["Contador"], 2), ("Approved", Text["Aprovado"], 3), ("Closed", Text["Fechado"], 4)];
+    private AccountingPeriodModel[] _periods = []; private AccountingPeriodModel? _current; private AccountantLegalDashboardModel? _legal; private DateTime? _selectedMonth = DateTime.Today.AddMonths(-1); private bool _loading = true, _creating, _busy, _reopening, _withdrawing; private string _reopenReason = string.Empty, _beneficiaryName = string.Empty, _beneficiaryTaxId = string.Empty, _taxTreatment = "NoMonthlyWithholding", _legalBasis = string.Empty; private decimal _withdrawAmount; private bool _irpfExempt;
+    private AccountingPeriodModel? Current => _current; private bool IsAdmin => Auth.CurrentUser?.Roles.Contains("Admin") == true; private bool CanReview => Auth.CurrentUser?.Roles.Any(x => x is "Admin" or "Contador") == true; private bool CanWrite => Auth.CurrentUser?.Roles.Any(x => x is "Admin" or "Vendedor") == true;
+    protected override async Task OnInitializedAsync()
+    {
+        if (!OperatingSystem.IsBrowser())
+            return;
+        await LoadAsync();
+        SelectByMonth();
+    }
+    private async Task LoadAsync() { _loading = true; var result = await Closing.GetAsync(); _loading = false; if (result.Succeeded) _periods = result.Value!; else Snackbar.Add(result.Error!, Severity.Error); }
+    private void SelectByMonth() { if (_selectedMonth is { } date) { _current = _periods.FirstOrDefault(x => x.Year == date.Year && x.Month == date.Month); _ = LoadLegalAsync(); } }
+    private void SelectPeriod(AccountingPeriodModel period) { _current = period; _selectedMonth = new DateTime(period.Year, period.Month, 1); _ = LoadLegalAsync(); }
+    private async Task OpenPeriodAsync() { if (_selectedMonth is not { } date) return; _creating = true; var result = await Closing.CreateAsync(date.Year, date.Month); _creating = false; if (!result.Succeeded) { Snackbar.Add(result.Error!, Severity.Error); return; } await LoadAsync(); SelectByMonth(); }
+    private async Task ValidateAsync() { if (Current is null) return; _busy = true; var result = await Closing.ValidateAsync(Current.Id); _busy = false; Snackbar.Add(result.Succeeded ? (result.Value!.Passed ? Text["Checklist aprovado. Periodo enviado ao contador."] : Text["Validacao concluida com bloqueios."]) : result.Error!, result.Succeeded && result.Value!.Passed ? Severity.Success : result.Succeeded ? Severity.Warning : Severity.Error); await RefreshCurrentAsync(result.Succeeded ? result.Value!.Period : null); }
+    private async Task ApproveAsync() { if (Current is null) return; _busy = true; var result = await Closing.ApproveAsync(Current.Id); _busy = false; Snackbar.Add(result.Succeeded ? Text["Periodo aprovado pelo contador."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); await RefreshCurrentAsync(result.Value); }
+    private async Task CloseAsync() { if (Current is null) return; _busy = true; var result = await Closing.CloseAsync(Current.Id); _busy = false; Snackbar.Add(result.Succeeded ? Text["Periodo fechado e snapshot imutavel gerado."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); await RefreshCurrentAsync(result.Value); }
+    private void OpenReopen() { _reopening = true; _reopenReason = string.Empty; } private void CloseReopen() => _reopening = false;
+    private async Task ReopenAsync() { if (Current is null) return; var result = await Closing.ReopenAsync(Current.Id, _reopenReason); Snackbar.Add(result.Succeeded ? Text["Periodo reaberto com nova versao."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) { _reopening = false; await RefreshCurrentAsync(result.Value); } }
+    private async Task DownloadAsync(DreSnapshotModel snapshot) { if (Current is null) return; var result = await Closing.GetDownloadAsync(Current.Id, snapshot.Id); if (result.Succeeded) Navigation.NavigateTo(result.Value!.Url, forceLoad: true); else Snackbar.Add(result.Error!, Severity.Error); }
+    private async Task RefreshCurrentAsync(AccountingPeriodModel? value) { var id = value?.Id ?? Current?.Id; await LoadAsync(); _current = _periods.FirstOrDefault(x => x.Id == id); await LoadLegalAsync(); }
+    private async Task LoadLegalAsync() { if (Current is null || !CanReview) { _legal = null; return; } var result = await Accounting.GetLegalDashboardAsync(Current.Id); _legal = result.Succeeded ? result.Value : null; }
+    private void OpenWithdrawal() { _withdrawing = true; _withdrawAmount = _legal?.WithdrawalGate.AvailableProfit ?? 0; _beneficiaryName = _beneficiaryTaxId = _legalBasis = string.Empty; _taxTreatment = "NoMonthlyWithholding"; _irpfExempt = false; }
+    private void CloseWithdrawal() => _withdrawing = false;
+    private async Task ReleaseWithdrawalAsync() { if (Current is null) return; _busy = true; var result = await Accounting.ReleaseWithdrawalAsync(Current.Id, new(_withdrawAmount, _beneficiaryName, _beneficiaryTaxId, _taxTreatment, _irpfExempt, _legalBasis)); _busy = false; Snackbar.Add(result.Succeeded ? "Saque liberado e decisão do contador registrada." : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) { _withdrawing = false; await LoadLegalAsync(); } }
+    private static string WithdrawalStatus(string status) => status switch { "ReleasedByAccountant" => "liberado pelo contador", "AwaitingAccountant" => "aguardando contador", _ => "bloqueado" };
+    private bool StepReached(string status) { if (Current is null) return false; int Rank(string value) => value switch { "Open" or "Validating" => 1, "PendingAccountant" => 2, "Approved" => 3, "Closed" => 4, _ => 0 }; return Rank(Current.Status) >= Rank(status); }
+    private static string[] CheckDetails(PeriodCheckModel check) { try { return JsonSerializer.Deserialize<string[]>(check.BlockerDetails) ?? []; } catch { return [check.BlockerDetails]; } }
+    private string StatusLabel(string status) => status switch { "Open" => Text["Aberto"], "Validating" => Text["Em validacao"], "PendingAccountant" => Text["Aguardando contador"], "Approved" => Text["Aprovado"], "Closed" => Text["Fechado"], _ => status };
+    private static string ShortHash(string hash) => hash.Length > 16 ? $"{hash[..8]}...{hash[^8..]}" : hash; private static string Money(decimal value) => value.ToString("C", CultureInfo.CurrentCulture);
+}

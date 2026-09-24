@@ -1,0 +1,14 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Avallo.Connector.MercadoLivre/Avallo.Connector.MercadoLivre.csproj" />
+  <Project Path="Avallo.Connector.Shopee/Avallo.Connector.Shopee.csproj" />
+  <Project Path="Avallo.Connector.Amazon/Avallo.Connector.Amazon.csproj" />
+  <Project Path="Avallo.Connectors.Abstractions/Avallo.Connectors.Abstractions.csproj" />
+  <Project Path="Avallo.Client/Avallo.Client.csproj" />
+  <Project Path="Avallo.Tests/Avallo.Tests.csproj" />
+  <Project Path="Avallo.Web/Avallo.Web.csproj" />
+</Solution>

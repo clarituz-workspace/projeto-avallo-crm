@@ -1,0 +1,50 @@
+@inject AppLocalizer Text
+
+@if (_banners.Length > 0)
+{
+    <MudCarousel TData="string" Class="connector-carousel" Style="height: 190px;" AutoCycle="true" ShowArrows="false" ShowBullets="false">
+        @foreach (var connector in _banners)
+        {
+            <MudCarouselItem Class="connector-banner" Style="@AccentStyle(connector)">
+                <div class="connector-banner-content">
+                    <div>
+                        <MudText Typo="Typo.overline">@connector.DisplayName</MudText>
+                        <MudText Typo="Typo.h5">@Text[connector.Presentation!.BannerHeadline ?? connector.DisplayName]</MudText>
+                        <MudText Typo="Typo.body2">@Text[connector.Presentation!.BannerSubtitle ?? string.Empty]</MudText>
+                    </div>
+                    @if (BannerLogo(connector) is { Length: > 0 } logo)
+                    {
+                        <img src="@logo" alt="@connector.DisplayName" />
+                    }
+                </div>
+            </MudCarouselItem>
+        }
+    </MudCarousel>
+}
+
+@code {
+    /// <summary>
+    /// Marketplaces instalados, ja no formato do contrato. Todo o conteudo do banner
+    /// (titulo, texto, logo e cor) vem de <c>ConnectorPresentation</c>: este componente
+    /// nao conhece nenhuma plataforma pelo nome.
+    /// </summary>
+    [Parameter] public ConnectorDescriptorModel[]? Connectors { get; set; }
+
+    private ConnectorDescriptorModel[] _banners = [];
+
+    protected override void OnParametersSet() =>
+        _banners = (Connectors ?? []).Where(x => x.Presentation is not null).ToArray();
+
+    private static string? BannerLogo(ConnectorDescriptorModel connector) =>
+        connector.Presentation?.BannerLogoUrl ?? connector.Presentation?.LogoUrl;
+
+    private static string AccentStyle(ConnectorDescriptorModel connector)
+    {
+        var presentation = connector.Presentation;
+        if (presentation is null ||
+            string.IsNullOrWhiteSpace(presentation.AccentFrom) ||
+            string.IsNullOrWhiteSpace(presentation.AccentTo))
+            return string.Empty;
+        return $"--connector-accent-from: {presentation.AccentFrom}; --connector-accent-to: {presentation.AccentTo};";
+    }
+}

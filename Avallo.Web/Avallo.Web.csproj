@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>Avallo.Web-Development</UserSecretsId>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" Version="4.0.103.2" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Azure.SignalR" Version="1.33.1" />
+    <ProjectReference Include="..\Avallo.Connectors.Abstractions\Avallo.Connectors.Abstractions.csproj" />
+    <!--
+      Conectores entram como plugin, nao como dependencia. ReferenceOutputAssembly="false"
+      garante ordem de build sem trazer nenhum tipo concreto de marketplace para o assembly
+      do Core; o DLL e publicado em connectors/ por Directory.Build.targets e descoberto
+      em runtime por ConnectorPluginExtensions.
+    -->
+    <ProjectReference Include="..\Avallo.Connector.MercadoLivre\Avallo.Connector.MercadoLivre.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\Avallo.Connector.Shopee\Avallo.Connector.Shopee.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\Avallo.Connector.Amazon\Avallo.Connector.Amazon.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\Avallo.Client\Avallo.Client.csproj" AdditionalProperties="PublishReadyToRun=false" GlobalPropertiesToRemove="PublishProfile;PublishReadyToRun" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.*" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.*" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.*" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.*" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.*" />
+    <PackageReference Include="ClosedXML" Version="0.105.*" />
+    <PackageReference Include="QuestPDF" Version="2026.*" />
+    <PackageReference Include="MailKit" Version="4.*" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.*" />
+    <PackageReference Include="Azure.Communication.Email" Version="1.*" />
+    <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.*" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.*" />
+    <PackageReference Include="StackExchange.Redis" Version="2.*" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.*" />
+    <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Blobs" Version="1.5.3" />
+    <PackageReference Include="Azure.Identity" Version="1.*" />
+    <PackageReference Include="OpenAI" Version="2.*" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.10" />
+  </ItemGroup>
+
+</Project>

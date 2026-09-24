@@ -1,0 +1,152 @@
+@page "/fiscal"
+@rendermode InteractiveWebAssembly
+@using System.Globalization
+@inject FiscalService FiscalService
+@inject AuthService Auth
+@inject AppLocalizer Text
+@inject ISnackbar Snackbar
+
+<PageTitle>@Text["Perfil fiscal e impostos"] | Avallo</PageTitle>
+
+<AppShellLayout PageContext="@Text["Perfil fiscal e impostos"]">
+<div class="page-container fiscal-page @(IsReadOnlyAccountant ? "read-only-accountant" : null)">
+    <header class="page-header"><div><MudText Typo="Typo.overline" Color="Color.Primary">@Text["Conformidade tributaria"]</MudText><MudText Typo="Typo.h3">@Text["Perfil fiscal e impostos"]</MudText><MudText Typo="Typo.body1">@Text["Dados cadastrais, regras por vigencia e apuracao automatica sobre vendas entregues."]</MudText></div>        @if (CanWrite && CurrentProfile is not null) { <MudTooltip Text="@Text["Criar nova regra tributaria vigente"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Outlined" OnClick="OpenProfileLookup"><MudIcon Icon="@Icons.Material.Filled.History"  />@Text["Nova vigencia"]</MudButton></MudTooltip> }</header>
+
+    @if (_loading)
+    {
+        <div class="page-container fiscal-page">
+            <header class="page-header">
+                <div>
+                    <MudSkeleton Width="120px" Height="20px" Class="mb-2" />
+                    <MudSkeleton Width="250px" Height="40px" Class="mb-2" />
+                    <MudSkeleton Width="400px" Height="20px" />
+                </div>
+            </header>
+            
+            <section class="fiscal-metrics mt-4">
+                <article class="metric-card">
+                    <MudSkeleton Width="80px" Height="15px" Class="mb-2" />
+                    <MudSkeleton Width="150px" Height="36px" Class="mb-2" />
+                    <MudSkeleton Width="120px" Height="15px" />
+                </article>
+                <article class="metric-card">
+                    <MudSkeleton Width="80px" Height="15px" Class="mb-2" />
+                    <MudSkeleton Width="150px" Height="36px" Class="mb-2" />
+                    <MudSkeleton Width="120px" Height="15px" />
+                </article>
+                <article class="metric-card">
+                    <MudSkeleton Width="80px" Height="15px" Class="mb-2" />
+                    <MudSkeleton Width="150px" Height="36px" Class="mb-2" />
+                    <MudSkeleton Width="120px" Height="15px" />
+                </article>
+            </section>
+
+            <section class="fiscal-layout mt-6">
+                <article class="panel fiscal-profile-card">
+                    <div class="panel-heading">
+                        <MudSkeleton Width="120px" Height="24px" />
+                    </div>
+                    <div class="mt-4">
+                        <MudSkeleton Width="100%" Height="20px" Class="mb-3" />
+                        <MudSkeleton Width="90%" Height="20px" Class="mb-3" />
+                        <MudSkeleton Width="95%" Height="20px" Class="mb-3" />
+                        <MudSkeleton Width="85%" Height="20px" />
+                    </div>
+                </article>
+                <article class="panel fiscal-simulator">
+                    <div class="panel-heading">
+                        <MudSkeleton Width="120px" Height="24px" />
+                    </div>
+                    <div class="mt-4">
+                        <MudSkeleton Width="100%" Height="40px" Class="mb-3" />
+                        <MudSkeleton Width="100%" Height="40px" Class="mb-3" />
+                        <MudSkeleton Width="100%" Height="36px" />
+                    </div>
+                </article>
+            </section>
+        </div>
+    }
+    else
+    {
+        @if (CanWrite && (CurrentProfile is null || _configuringProfile))
+        {
+            <section class="panel fiscal-onboarding">
+                <div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Consultar empresa por CNPJ"]</MudText><MudText Typo="Typo.body2">@Text["A BrasilAPI fornece os dados cadastrais. O regime deve ser confirmado pela empresa e pelo contador."]</MudText></div>@if (CurrentProfile is not null) { <MudIconButton OnClick="CloseProfileLookup" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton> }</div>
+  <div class="cnpj-search"><MudTextField @bind-Value="_cnpj" Label="CNPJ" AdornmentIcon="@Icons.Material.Filled.Business" Variant="Variant.Outlined" Placeholder="00.000.000/0000-00" Adornment="Adornment.Start" /><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_lookingUp" OnClick="LookupAsync">@(_lookingUp ? Text["Consultando..."] : Text["Consultar BrasilAPI"])</MudButton></div>
+                @if (_lookingUp)
+                {
+                    <article class="fiscal-company-preview mt-4">
+                        <div class="fiscal-company-title">
+                            <MudSkeleton SkeletonType="SkeletonType.Circle" Width="40px" Height="40px" Class="mr-3" />
+                            <div>
+                                <MudSkeleton Width="250px" Height="20px" Class="mb-2" />
+                                <MudSkeleton Width="180px" Height="15px" />
+                            </div>
+                        </div>
+                        <div class="fiscal-company-grid mt-4">
+                            <span><MudSkeleton Width="60px" Height="15px" Class="mb-1" /><MudSkeleton Width="100px" Height="20px" /></span>
+                            <span><MudSkeleton Width="80px" Height="15px" Class="mb-1" /><MudSkeleton Width="120px" Height="20px" /></span>
+                            <span class="wide"><MudSkeleton Width="100px" Height="15px" Class="mb-1" /><MudSkeleton Width="300px" Height="20px" /></span>
+                            <span class="wide"><MudSkeleton Width="80px" Height="15px" Class="mb-1" /><MudSkeleton Width="400px" Height="20px" /></span>
+                        </div>
+                    </article>
+                }
+                else if (_lookup is not null)
+                {
+                    <article class="fiscal-company-preview"><div class="fiscal-company-title"><span class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.Domain"  /></span><div><strong>@_lookup.LegalName</strong><small>@(_lookup.TradeName ?? Text["Sem nome fantasia"]) &middot; @_lookup.Cnpj</small></div><MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@_lookup.RegistrationStatus</MudChip></div><div class="fiscal-company-grid"><span><small>@Text["Porte"]</small><strong>@_lookup.CompanySize</strong></span><span><small>@Text["CNAE principal"]</small><strong>@_lookup.MainCnaeCode</strong></span><span class="wide"><small>@Text["Atividade"]</small><strong>@_lookup.MainCnaeDescription</strong></span><span class="wide"><small>@Text["Endereco"]</small><strong>@_lookup.AddressSummary</strong></span></div><MudDivider Class="my-5" /><div class="fiscal-profile-form"><MudSelect T="string" @bind-Value="_taxRegime" Label="@Text["Regime tributario confirmado"]" Variant="Variant.Outlined"><MudSelectItem Value="@("SimplesNacional")">Simples Nacional</MudSelectItem><MudSelectItem Value="@("LucroPresumido")">Lucro Presumido</MudSelectItem><MudSelectItem Value="@("LucroReal")">Lucro Real</MudSelectItem></MudSelect><MudDatePicker @bind-Date="_profileEffectiveFrom" Label="@Text["Inicio da vigencia"]" Variant="Variant.Outlined" Required /><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_savingProfile" OnClick="CreateProfileAsync">@Text["Criar perfil fiscal"]</MudButton></div></article>
+                }
+            </section>
+        }
+
+        @if (CurrentProfile is { } profile)
+        {
+            <section class="fiscal-metrics"><article class="metric-card"><MudText Typo="Typo.caption">@Text["REGIME ATUAL"]</MudText><MudText Typo="Typo.h4">@RegimeLabel(profile.TaxRegime)</MudText><MudText Typo="Typo.body2">@Text["Vigente desde"] @profile.EffectiveFrom.ToLocalTime().ToString("d")</MudText></article><article class="metric-card"><MudText Typo="Typo.caption">@Text["ALIQUOTA APROVADA"]</MudText><MudText Typo="Typo.h4">@ApprovedRate.ToString("N4", CultureInfo.CurrentCulture)%</MudText><MudText Typo="Typo.body2">@Text["Soma das regras vigentes"]</MudText></article><article class="metric-card"><MudText Typo="Typo.caption">@Text["PENDENCIAS FISCAIS"]</MudText><MudText Typo="Typo.h4">@_data.Issues.Length</MudText><MudText Typo="Typo.body2">@Text["Pedidos aguardando configuracao"]</MudText></article></section>
+
+            <section class="fiscal-layout">
+                <article class="panel fiscal-profile-card"><div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Perfil vigente"]</MudText><MudText Typo="Typo.body2">@Text["Versao"] @profile.Version @Text["consultada na BrasilAPI."]</MudText></div><span class="metric-icon compact"><MudIcon Icon="@Icons.Material.Filled.VerifiedUser"  /></span></div><div class="fiscal-detail"><span>@Text["Razao social"]</span><strong>@profile.LegalName</strong></div><div class="fiscal-detail"><span>CNPJ</span><strong>@profile.Cnpj</strong></div><div class="fiscal-detail"><span>@Text["Situacao"]</span><strong>@profile.RegistrationStatus</strong></div><div class="fiscal-detail"><span>@Text["CNAE"]</span><strong>@profile.MainCnaeCode</strong></div><div class="fiscal-detail stacked"><span>@Text["Atividade principal"]</span><strong>@profile.MainCnaeDescription</strong></div><div class="fiscal-detail stacked"><span>@Text["Endereco"]</span><strong>@profile.AddressSummary</strong></div></article>
+                <article class="panel fiscal-simulator"><div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Simulador fiscal"]</MudText><MudText Typo="Typo.body2">@Text["Calculo informativo com regras aprovadas."]</MudText></div><span class="metric-icon compact"><MudIcon Icon="@Icons.Material.Filled.Calculate"  /></span></div><div class="field-grid"><MudNumericField T="decimal" @bind-Value="_simulationAmount" Label="@Text["Valor da venda"]" Variant="Variant.Outlined" Min="0M" Format="C" Culture="CultureInfo.CurrentCulture" /><MudDatePicker @bind-Date="_simulationDate" Label="@Text["Data da entrega"]" Variant="Variant.Outlined" /></div><MudTooltip Text="@Text["Calcular impostos com base nas regras aprovadas"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Class="mt-4" Disabled="_simulating" OnClick="SimulateAsync">@Text["Simular impostos"]</MudButton></MudTooltip>@if (_simulation is not null) { <div class="simulation-result">@foreach (var line in _simulation.Lines) { <div><span>@line.TaxName <small>@line.Rate.ToString("N4")%</small></span><strong>@Money(line.TaxAmount)</strong></div> }<div class="total"><strong>@Text["Total estimado"]</strong><strong>@Money(_simulation.Lines.Sum(x => x.TaxAmount))</strong></div></div> }</article>
+            </section>
+
+            <section class="panel entries-panel fiscal-rules-panel"><div class="entries-toolbar"><div><MudText Typo="Typo.h5">@Text["Regras tributarias"]</MudText><MudText Typo="Typo.body2">@Text["Versoes e vigencias aprovadas pelo contador."]</MudText></div><MudTooltip Text="@Text["Adicionar nova regra de tributacao"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenRule"><MudIcon Icon="@Icons.Material.Filled.Add"  />@Text["Nova regra"]</MudButton></MudTooltip></div><AppQuickGrid TItem="TaxRuleModel" Items="@ProfileRules.AsQueryable()" ItemKey="@((TaxRuleModel item) => item.Id)" PageSize="10" Class="entries-table"><Columns><AppTemplateColumn TItem="TaxRuleModel" Title="@Text["Tributo"]" Sortable="true" SortBy="@(GridSort<TaxRuleModel>.ByAscending(x => x.TaxName))"><strong>@context.TaxName</strong><small class="table-secondary">@context.TaxCode</small>@if (!string.IsNullOrWhiteSpace(context.ReviewNotes)) { <small class="expense-rejection">@context.ReviewNotes</small> }</AppTemplateColumn><AppTemplateColumn TItem="TaxRuleModel" Title="@Text["Vigencia"]" Sortable="true" SortBy="@(GridSort<TaxRuleModel>.ByDescending(x => x.EffectiveFrom))">@context.EffectiveFrom.ToLocalTime().ToString("d")<small class="table-secondary">@Text["ate"] @(context.EffectiveTo?.ToLocalTime().ToString("d") ?? Text["vigente"])</small></AppTemplateColumn><AppTemplateColumn TItem="TaxRuleModel" Title="@Text["Versao"]" Sortable="true" SortBy="@(GridSort<TaxRuleModel>.ByDescending(x => x.Version))">v@context.Version</AppTemplateColumn><AppTemplateColumn TItem="TaxRuleModel" Title="@Text["Status"]" Sortable="true" SortBy="@(GridSort<TaxRuleModel>.ByAscending(x => x.Status))"><MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@RuleColor(context.Status)">@RuleStatus(context.Status)</MudChip></AppTemplateColumn><AppTemplateColumn TItem="TaxRuleModel" Title="@Text["Aliquota"]" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right" Sortable="true" SortBy="@(GridSort<TaxRuleModel>.ByAscending(x => x.Rate))"><span class="money-cell">@context.Rate.ToString("N6")%</span></AppTemplateColumn><AppTemplateColumn TItem="TaxRuleModel"><div class="expense-actions">@if (context.Status is "Draft" or "Rejected") { <MudTooltip Text="@Text["Enviar regra para aprovacao do contador"]" Placement="Placement.Top"><MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => SubmitRuleAsync(context)">@Text["Enviar para revisao"]</MudButton></MudTooltip> } @if (CanReview && context.Status == "PendingReview") { <MudTooltip Text="@Text["Aprovar regra e reprocessar impostos"]" Placement="Placement.Top"><MudIconButton Icon="check" Color="Color.Success" aria-label="@Text["Aplicar"]" OnClick="() => ApproveRuleAsync(context)" /></MudTooltip><MudTooltip Text="@Text["Rejeitar regra com justificativa"]" Placement="Placement.Top"><MudIconButton Icon="close" Color="Color.Error" aria-label="@Text["Rejeitar regra"]" OnClick="() => OpenReject(context)" /></MudTooltip> }</div></AppTemplateColumn></Columns><EmptyContent><EmptyReport Icon="@Icons.Material.Outlined.Rule" Text="@Text["Cadastre as aliquotas aplicaveis a este perfil fiscal."]" Compact /></EmptyContent></AppQuickGrid></section>
+
+            @if (_data.Issues.Length > 0) { <section class="panel fiscal-issues"><div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Pendencias de apuracao"]</MudText><MudText Typo="Typo.body2">@Text["Pedidos entregues que ainda nao possuem configuracao fiscal valida."]</MudText></div><MudButton Variant="Variant.Text" OnClick="ReprocessAsync"><MudIcon Icon="@Icons.Material.Filled.Refresh"  />@Text["Reprocessar"]</MudButton></div>@foreach (var issue in _data.Issues) { <div class="fiscal-issue"><MudIcon Icon="@Icons.Material.Filled.WarningAmber"  /><div><strong>@Text["Pedido"] @issue.OrderId &middot; @issue.Platform</strong><small>@IssueLabel(issue.Type)</small></div></div> }</section> }
+        }
+    }
+
+    @if (_creatingRule && CurrentProfile is not null) { <div class="connector-modal-backdrop" @onclick="CloseRule"><article class="connector-modal panel" @onclick:stopPropagation><div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Nova regra tributaria"]</MudText><MudText Typo="Typo.body2">@Text["A regra sera criada como rascunho e exigira revisao."]</MudText></div><MudIconButton OnClick="CloseRule" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div><MudTextField @bind-Value="_ruleCode" Label="@Text["Codigo do tributo"]" Placeholder="DAS, ICMS, PIS..." Variant="Variant.Outlined" Required Class="mb-3" /><MudTextField @bind-Value="_ruleName" Label="@Text["Nome do tributo"]" Variant="Variant.Outlined" Required Class="mb-3" /><div class="field-grid"><MudNumericField T="decimal" @bind-Value="_ruleRate" Label="@Text["Aliquota (%)"]" Variant="Variant.Outlined" Min="0.000001M" Max="100M" /><MudDatePicker @bind-Date="_ruleEffectiveFrom" Label="@Text["Inicio da vigencia"]" Variant="Variant.Outlined" Required /></div><MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense Class="my-4">@Text["Confirme a aliquota com o contador antes de enviar para aprovacao."]</MudAlert><MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Disabled="_savingRule" OnClick="CreateRuleAsync">@Text["Salvar regra"]</MudButton></article></div> }
+    @if (_rejectingRule is not null) { <div class="connector-modal-backdrop" @onclick="CloseReject"><article class="connector-modal panel" @onclick:stopPropagation><div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Rejeitar regra"]</MudText><MudText Typo="Typo.body2">@Text["Registre a correcao necessaria."]</MudText></div><MudIconButton OnClick="CloseReject" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div><MudTextField @bind-Value="_reviewNotes" Label="@Text["Motivo"]" Variant="Variant.Outlined" Lines="3" Required Class="mb-3" /><MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Disabled="@string.IsNullOrWhiteSpace(_reviewNotes)" OnClick="RejectRuleAsync">@Text["Confirmar rejeicao"]</MudButton></article></div> }
+</div>
+</AppShellLayout>
+
+@code {
+    private FiscalOverviewModel _data = new([], [], []); private CnpjLookupModel? _lookup; private TaxSimulationModel? _simulation; private TaxRuleModel? _rejectingRule;
+    private string _cnpj = string.Empty, _taxRegime = "SimplesNacional", _ruleCode = string.Empty, _ruleName = string.Empty, _reviewNotes = string.Empty; private DateTime? _profileEffectiveFrom = DateTime.Today, _ruleEffectiveFrom = DateTime.Today, _simulationDate = DateTime.Today; private decimal _ruleRate, _simulationAmount = 1000; private bool _loading = true, _lookingUp, _savingProfile, _configuringProfile, _creatingRule, _savingRule, _simulating;
+    private TaxProfileModel? CurrentProfile => _data.Profiles.FirstOrDefault(x => x.EffectiveTo is null) ?? _data.Profiles.FirstOrDefault();
+    private TaxRuleModel[] ProfileRules => CurrentProfile is null ? [] : _data.Rules.Where(x => x.TaxProfileId == CurrentProfile.Id).ToArray();
+    private decimal ApprovedRate => ProfileRules.Where(x => x.Status == "Approved" && x.EffectiveTo is null).Sum(x => x.Rate);
+    private bool CanReview => Auth.CurrentUser?.Roles.Any(x => x is "Admin" or "Contador") == true;
+    private bool CanWrite => Auth.CurrentUser?.Roles.Any(x => x is "Admin" or "Vendedor") == true;
+    private bool IsReadOnlyAccountant => Auth.CurrentUser?.Roles.Contains("Contador") == true;
+    protected override Task OnInitializedAsync() =>
+        OperatingSystem.IsBrowser() ? LoadAsync() : Task.CompletedTask;
+    private async Task LoadAsync() { _loading = true; var result = await FiscalService.GetOverviewAsync(); _loading = false; if (result.Succeeded) _data = result.Value!; else Snackbar.Add(result.Error!, Severity.Error); }
+    private void OpenProfileLookup() { _configuringProfile = true; _lookup = null; _cnpj = CurrentProfile?.Cnpj ?? string.Empty; _profileEffectiveFrom = DateTime.Today; }
+    private void CloseProfileLookup() { _configuringProfile = false; _lookup = null; }
+    private async Task LookupAsync() { _lookingUp = true; var result = await FiscalService.LookupCnpjAsync(_cnpj); _lookingUp = false; if (result.Succeeded) _lookup = result.Value; else Snackbar.Add(result.Error!, Severity.Error); }
+    private async Task CreateProfileAsync() { if (_lookup is null || _profileEffectiveFrom is null) return; _savingProfile = true; var result = await FiscalService.CreateProfileAsync(_lookup.Cnpj, _taxRegime, DateOnly.FromDateTime(_profileEffectiveFrom.Value)); _savingProfile = false; Snackbar.Add(result.Succeeded ? Text["Perfil fiscal criado com sucesso."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) { _configuringProfile = false; _lookup = null; await LoadAsync(); } }
+    private void OpenRule() { _creatingRule = true; _ruleCode = _ruleName = string.Empty; _ruleRate = 0; _ruleEffectiveFrom = DateTime.Today; }
+    private void CloseRule() => _creatingRule = false;
+    private async Task CreateRuleAsync() { if (CurrentProfile is null || _ruleEffectiveFrom is null) return; _savingRule = true; var result = await FiscalService.CreateRuleAsync(CurrentProfile.Id, _ruleCode, _ruleName, _ruleRate, DateOnly.FromDateTime(_ruleEffectiveFrom.Value)); _savingRule = false; Snackbar.Add(result.Succeeded ? Text["Regra criada como rascunho."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) { _creatingRule = false; await LoadAsync(); } }
+    private async Task SubmitRuleAsync(TaxRuleModel rule) { var result = await FiscalService.SubmitRuleAsync(rule.Id); Snackbar.Add(result.Succeeded ? Text["Regra enviada para revisao."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) await LoadAsync(); }
+    private async Task ApproveRuleAsync(TaxRuleModel rule) { var result = await FiscalService.ApproveRuleAsync(rule.Id); Snackbar.Add(result.Succeeded ? Text["Regra aprovada e impostos reprocessados."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) await LoadAsync(); }
+    private void OpenReject(TaxRuleModel rule) { _rejectingRule = rule; _reviewNotes = string.Empty; }
+    private void CloseReject() => _rejectingRule = null;
+    private async Task RejectRuleAsync() { if (_rejectingRule is null) return; var result = await FiscalService.RejectRuleAsync(_rejectingRule.Id, _reviewNotes); Snackbar.Add(result.Succeeded ? Text["Regra rejeitada."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) { _rejectingRule = null; await LoadAsync(); } }
+    private async Task SimulateAsync() { if (_simulationDate is null) return; _simulating = true; var result = await FiscalService.SimulateAsync(_simulationAmount, DateOnly.FromDateTime(_simulationDate.Value)); _simulating = false; if (result.Succeeded) _simulation = result.Value; else Snackbar.Add(result.Error!, Severity.Error); }
+    private async Task ReprocessAsync() { var result = await FiscalService.ReprocessAsync(); Snackbar.Add(result.Succeeded ? $"{result.Value!.ProcessedOrders} pedidos reprocessados." : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) await LoadAsync(); }
+    private static string Money(decimal value) => value.ToString("C", CultureInfo.CurrentCulture);
+    private static string RegimeLabel(string regime) => regime switch { "SimplesNacional" => "Simples Nacional", "LucroPresumido" => "Lucro Presumido", "LucroReal" => "Lucro Real", _ => regime };
+    private string RuleStatus(string status) => status switch { "Draft" => Text["Rascunho"], "PendingReview" => Text["Em revisao"], "Approved" => Text["Aprovada"], "Rejected" => Text["Rejeitada"], _ => status };
+    private static Color RuleColor(string status) => status switch { "Approved" => Color.Success, "PendingReview" => Color.Warning, "Rejected" => Color.Error, _ => Color.Default };
+    private string IssueLabel(string type) => type == "MissingProfile" ? Text["Sem perfil fiscal vigente na entrega"] : Text["Sem regra tributaria aprovada na entrega"];
+}

@@ -1,0 +1,377 @@
+@page "/expenses"
+@rendermode InteractiveWebAssembly
+@using System.Globalization
+@inject ExpenseService ExpensesService
+@inject AuthService Auth
+@inject AppLocalizer Text
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>@Text["Despesas operacionais"] | Avallo</PageTitle>
+
+<AppShellLayout PageContext="@Text["Despesas operacionais"]">
+<div class="page-container expenses-page">
+    <header class="page-header">
+        <div><MudText Typo="Typo.overline" Color="Color.Primary">@Text["Controle de saidas"]</MudText><MudText Typo="Typo.h3">@Text["Despesas operacionais"]</MudText><MudText Typo="Typo.body1">@Text["Comprovantes, revisao contabil e integracao automatica com a DRE."]</MudText></div>
+        @if (CanWrite)
+        {
+            <div class="expense-header-actions">
+                <MudTooltip Text="Criar e organizar categorias personalizadas" Placement="Placement.Bottom"><MudButton Variant="Variant.Outlined" OnClick="OpenCategories"><MudIcon Icon="@Icons.Material.Filled.Category"  />Categorias</MudButton></MudTooltip>
+                <MudTooltip Text="@Text["Cadastrar nova despesa operacional"]" Placement="Placement.Bottom"><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenCreate"><MudIcon Icon="@Icons.Material.Filled.Add"  />@Text["Nova despesa"]</MudButton></MudTooltip>
+            </div>
+        }
+    </header>
+
+    <section class="expense-metrics">
+        <article class="metric-card"><MudText Typo="Typo.caption">@Text["TOTAL CADASTRADO"]</MudText><MudText Typo="Typo.h4">@Money(_expenses.Sum(x => x.Amount))</MudText><MudText Typo="Typo.body2">@_expenses.Length @Text["lancamentos"]</MudText></article>
+        <article class="metric-card"><MudText Typo="Typo.caption">@Text["EM REVISAO"]</MudText><MudText Typo="Typo.h4">@Money(_expenses.Where(x => x.Status == "PendingReview").Sum(x => x.Amount))</MudText><MudText Typo="Typo.body2">@Text["Aguardando contador"]</MudText></article>
+        <article class="metric-card"><MudText Typo="Typo.caption">@Text["APROVADO NA DRE"]</MudText><MudText Typo="Typo.h4">@Money(_expenses.Where(x => x.Status == "Approved").Sum(x => x.Amount))</MudText><MudText Typo="Typo.body2">@Text["Com comprovante validado"]</MudText></article>
+    </section>
+
+    <section class="panel entries-panel expense-list-panel">
+        <div class="entries-toolbar"><div><MudText Typo="Typo.h5">@Text["Lancamentos operacionais"]</MudText><MudText Typo="Typo.body2">@Text["Somente despesas aprovadas impactam o resultado contabil."]</MudText></div><MudTooltip Text="@Text["Recarregar lista de despesas"]" Placement="Placement.Left"><MudButton Variant="Variant.Text" OnClick="LoadAsync"><MudIcon Icon="@Icons.Material.Filled.Refresh"  />@Text["Atualizar"]</MudButton></MudTooltip></div>
+        @if (_loading)
+        {
+            <div class="mt-4">
+                <MudSkeleton Width="100%" Height="40px" Class="mb-2" />
+                <MudSkeleton Width="100%" Height="30px" Class="mb-2" />
+                <MudSkeleton Width="100%" Height="30px" Class="mb-2" />
+                <MudSkeleton Width="100%" Height="30px" />
+            </div>
+        }
+        else
+        {
+            <AppQuickGrid TItem="ExpenseModel" Items="@_expenses.AsQueryable()" ItemKey="@((ExpenseModel expense) => expense.Id)" PageSize="10" Class="entries-table">
+                <Columns>
+                    <Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn TGridItem="ExpenseModel" Title="@Text["Competencia"]" Context="expense" Sortable="true" SortBy="@(GridSort<ExpenseModel>.ByAscending(x => x.CompetenceDate))"><strong>@expense.CompetenceDate.ToString("d", CultureInfo.CurrentCulture)</strong></Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn>
+                    <Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn TGridItem="ExpenseModel" Title="@Text["Lancamento"]" Context="expense" Sortable="true" SortBy="@(GridSort<ExpenseModel>.ByAscending(x => x.Description))"><strong>@expense.Description</strong><small class="table-secondary">@(expense.Supplier ?? Text["Sem fornecedor"])</small>@if (!string.IsNullOrWhiteSpace(expense.RejectionReason)) { <small class="expense-rejection">@expense.RejectionReason</small> }</Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn>
+                    <Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn TGridItem="ExpenseModel" Title="@Text["Categoria"]" Context="expense" Sortable="true" SortBy="@(GridSort<ExpenseModel>.ByAscending(x => x.Category))"><span class="platform-pill">@CategoryLabel(expense.Category)</span></Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn>
+                    <Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn TGridItem="ExpenseModel" Title="@Text["Comprovantes"]" Context="expense">
+                        <div class="attachment-list">
+                            @foreach (var attachment in expense.Attachments) { <button title="@Text["Abrir comprovante"]" @onclick="() => OpenViewerAsync(expense, attachment)"><MudIcon Icon="@Icons.Material.Filled.AttachFile"  /> @attachment.FileName</button> }
+                            @if (CanWrite && CanEdit(expense))
+                            {
+                                <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                                           Class="pa-0" OnClick="() =>OpenAttachmentModal(expense)"><MudIcon Icon="@Icons.Material.Filled.UploadFile"  />>
+                                    @Text["Anexar"]
+                                </MudButton>
+                            }
+                        </div>
+                    </Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn>
+                    <Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn TGridItem="ExpenseModel" Title="@Text["Status"]" Context="expense" Sortable="true" SortBy="@(GridSort<ExpenseModel>.ByAscending(x => x.Status))"><MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@StatusColor(expense.Status)">@StatusLabel(expense.Status)</MudChip></Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn>
+                    <Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn TGridItem="ExpenseModel" Title="@Text["Valor"]" Context="expense" Align="Microsoft.AspNetCore.Components.QuickGrid.Align.Right" Sortable="true" SortBy="@(GridSort<ExpenseModel>.ByAscending(x => x.Amount))"><span class="money-cell">@Money(expense.Amount)</span></Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn>
+                    <Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn TGridItem="ExpenseModel" Title="Ações" Context="expense">
+                        <div class="attachment-actions">
+                            @foreach (var attachment in expense.Attachments)
+                            {
+                                <div class="attachment-action-row">
+                                    <MudTooltip Text="Visualizar comprovante"><MudIconButton Size="Size.Small" OnClick="() => OpenViewerAsync(expense, attachment)"><MudIcon Icon="@Icons.Material.Filled.Visibility"  /></MudIconButton></MudTooltip>
+                                    @if (CanWrite && CanEdit(expense))
+                                    {
+                                        <MudTooltip Text="Substituir comprovante"><MudIconButton Size="Size.Small" OnClick="() => OpenAttachmentModal(expense, attachment)"><MudIcon Icon="@Icons.Material.Filled.Edit"  /></MudIconButton></MudTooltip>
+                                        <MudTooltip Text="Excluir comprovante ou despesa"><MudIconButton Color="Color.Error" Size="Size.Small" OnClick="() => OpenDelete(expense, attachment)"><MudIcon Icon="@Icons.Material.Filled.DeleteOutline"  /></MudIconButton></MudTooltip>
+                                    }
+                                </div>
+                            }
+                            @if (CanWrite && CanEdit(expense) && expense.Attachments.Length == 0)
+                            {
+                                <MudTooltip Text="Excluir despesa"><MudIconButton Color="Color.Error" Size="Size.Small" OnClick="() => OpenDelete(expense)"><MudIcon Icon="@Icons.Material.Filled.DeleteOutline"  /></MudIconButton></MudTooltip>
+                            }
+                            else if (expense.Attachments.Length == 0) { <span class="no-actions">—</span> }
+                        </div>
+                    </Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn>
+                    <Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn TGridItem="ExpenseModel" Context="expense"><div class="expense-actions">@if (CanWrite && CanEdit(expense)) { <MudTooltip Text="@Text["Enviar comprovante para revisao do contador"]" Placement="Placement.Top"><MudButton Size="Size.Small" Variant="Variant.Outlined" Disabled="@(expense.Attachments.Length == 0 || _busyId == expense.Id)" OnClick="() => SubmitAsync(expense)">@Text["Enviar para revisao"]</MudButton></MudTooltip> } @if (CanReview && expense.Status == "PendingReview") { <MudTooltip Text="@Text["Aprovar despesa e lançar na DRE"]" Placement="Placement.Top"><MudIconButton Color="Color.Success" aria-label="@Text["Aplicar"]" Disabled="@(_busyId == expense.Id)" OnClick="() => ApproveAsync(expense)"><MudIcon Icon="@Icons.Material.Filled.Check"  /></MudIconButton></MudTooltip><MudTooltip Text="@Text["Rejeitar e devolver para correcao"]" Placement="Placement.Top"><MudIconButton Color="Color.Error" aria-label="@Text["Rejeitar despesa"]" OnClick="() => OpenReject(expense)"><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></MudTooltip> }</div></Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn>
+                </Columns>
+                <EmptyContent><EmptyReport Icon="@Icons.Material.Filled.ReceiptLong" Text="@Text["Nenhuma despesa operacional cadastrada."]" /></EmptyContent>
+            </AppQuickGrid>
+        }
+    </section>
+
+    @if (_creating)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseCreate"><article class="connector-modal panel expense-modal" @onclick:stopPropagation>
+            <div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Nova despesa"]</MudText><MudText Typo="Typo.body2">@Text["Cadastre a competencia e anexe o comprovante depois de salvar."]</MudText></div><MudIconButton OnClick="CloseCreate" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div>
+            <MudForm @ref="_form"><MudTextField @bind-Value="Form.Description" Label="@Text["Descricao"]" Variant="Variant.Outlined" Required Class="mb-3" /><div class="field-grid"><MudSelect T="string" @bind-Value="Form.Category" Label="@Text["Categoria"]" Variant="Variant.Outlined">@foreach (var category in AvailableCategories) { <MudSelectItem Value="@category">@CategoryLabel(category)</MudSelectItem> }</MudSelect><MudNumericField T="decimal" @bind-Value="Form.Amount" Label="@Text["Valor"]" Variant="Variant.Outlined" Min="0.01M" Format="C" Culture="CultureInfo.CurrentCulture" /></div><MudTextField @bind-Value="Form.Supplier" Label="@Text["Fornecedor"]" Variant="Variant.Outlined" Class="my-3" /><div class="field-grid"><MudDatePicker @bind-Date="Form.CompetenceDate" Label="@Text["Competencia"]" Variant="Variant.Outlined" Required /><MudDatePicker @bind-Date="Form.DueDate" Label="@Text["Vencimento"]" Variant="Variant.Outlined" Clearable /></div><MudTextField @bind-Value="Form.Notes" Label="@Text["Observacoes"]" Variant="Variant.Outlined" Lines="3" Class="my-3" /><MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Disabled="_saving" OnClick="CreateAsync">@(_saving ? Text["Salvando..."] : Text["Salvar despesa"])</MudButton></MudForm>
+        </article></div>
+    }
+
+    @if (_managingCategories)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseCategories">
+            <article class="connector-modal panel expense-category-modal" @onclick:stopPropagation>
+                <div class="panel-heading">
+                     <div><MudText Typo="Typo.h5">@Text["Categorias personalizadas"]</MudText><MudText Typo="Typo.body2">@Text["Organize seus lancamentos com categorias proprias do workspace."]</MudText></div>
+                    <MudIconButton OnClick="CloseCategories" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton>
+                </div>
+                <div class="expense-category-create">
+                     <MudTextField @bind-Value="_newCategoryName" Label="@Text["Nome da categoria"]" Variant="Variant.Outlined" MaxLength="50" Immediate />
+                     <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_savingCategory || string.IsNullOrWhiteSpace(_newCategoryName))" OnClick="CreateCategoryAsync"><MudIcon Icon="@Icons.Material.Filled.Add"  />@(_savingCategory ? Text["Criando..."] : Text["Adicionar"])</MudButton>
+                </div>
+                <div class="expense-category-list">
+                    @if (_customCategories.Length == 0)
+                    {
+                         <div class="expense-category-empty"><MudIcon Icon="@Icons.Material.Filled.Category"  /><span>@Text["Nenhuma categoria personalizada criada."]</span></div>
+                    }
+                    @foreach (var category in _customCategories)
+                    {
+                         <div class="expense-category-item"><span><MudIcon Icon="@Icons.Material.Filled.Label"  />@category.Name</span><MudTooltip Text="@Text["Excluir categoria"]"><MudIconButton Color="Color.Error" Size="Size.Small" Disabled="@(_deletingCategoryId == category.Id)" OnClick="() => DeleteCategoryAsync(category)"><MudIcon Icon="@Icons.Material.Filled.DeleteOutline"  /></MudIconButton></MudTooltip></div>
+                    }
+                </div>
+            </article>
+        </div>
+    }
+
+    @if (_rejecting is not null)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseReject"><article class="connector-modal panel" @onclick:stopPropagation><div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Rejeitar despesa"]</MudText><MudText Typo="Typo.body2">@Text["Informe o motivo para o vendedor corrigir o lancamento."]</MudText></div><MudIconButton OnClick="CloseReject" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div><MudTextField @bind-Value="_rejectionReason" Label="@Text["Motivo da rejeicao"]" Variant="Variant.Outlined" Lines="3" Required Class="mb-3" /><MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Disabled="@string.IsNullOrWhiteSpace(_rejectionReason)" OnClick="RejectAsync">@Text["Confirmar rejeicao"]</MudButton></article></div>
+    }
+
+    @if (_attachmentExpense is not null)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseAttachmentModal">
+            <article class="connector-modal panel receipt-upload-modal" @onclick:stopPropagation>
+                <div class="panel-heading">
+                     <div><MudText Typo="Typo.h5">@(_editingAttachment is null ? Text["Anexar comprovante"] : Text["Editar comprovante"])</MudText><MudText Typo="Typo.body2">@_attachmentExpense.Description</MudText></div>
+                    <MudIconButton OnClick="CloseAttachmentModal" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton>
+                </div>
+                <div class="receipt-upload-layout">
+                    <section class="receipt-upload-column">
+                        <div class="receipt-column-heading">
+                            <MudIcon Icon="@Icons.Material.Filled.UploadFile"  />
+                             <div><strong>@Text["Arquivo do comprovante"]</strong><span>@Text["Selecione o documento que deseja anexar."]</span></div>
+                        </div>
+                        <label class="receipt-dropzone">
+                            <InputFile OnChange="SelectAttachmentFile" accept=".pdf,.png,.jpg,.jpeg" />
+                            <MudIcon Icon="@Icons.Material.Filled.CloudUpload"  />
+                             <strong>@Text["Selecionar comprovante"]</strong>
+                             <span>@Text["PDF, PNG ou JPG - maximo de 10 MB"]</span>
+                        </label>
+                        @if (_selectedFile is not null)
+                        {
+                            <div class="selected-receipt"><MudIcon Icon="@Icons.Material.Filled.Description"  /><div><strong>@_selectedFile.Name</strong><span>@FormatSize(_selectedFile.Size)</span></div></div>
+                        }
+                    </section>
+                    <section class="receipt-preview-column">
+                        <div class="receipt-column-heading">
+                            <MudIcon Icon="@Icons.Material.Filled.Visibility"  />
+                             <div><strong>@Text["Pre-visualizacao"]</strong><span>@Text["Confira o documento antes de salvar."]</span></div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(_previewDataUrl))
+                        {
+                            <div class="receipt-preview">
+                                 @if (_selectedFile?.ContentType == "application/pdf") { <iframe src="@_previewDataUrl" title="@Text["Pre-visualizacao do comprovante"]"></iframe> }
+                                 else { <img src="@_previewDataUrl" alt="@Text["Pre-visualizacao do comprovante"]" /> }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="receipt-preview receipt-preview-empty">
+                                <MudIcon Icon="@Icons.Material.Filled.InsertDriveFile"  />
+                                 <strong>@Text["Nenhum arquivo selecionado"]</strong>
+                                 <span>@Text["O conteudo aparecera aqui."]</span>
+                            </div>
+                        }
+                    </section>
+                </div>
+                <div class="receipt-modal-buttons">
+                     <MudButton Variant="Variant.Text" OnClick="CloseAttachmentModal">@Text["Cancelar"]</MudButton>
+                     <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_selectedFile is null || _uploading)" OnClick="SaveAttachmentAsync">@(_uploading ? Text["Salvando..."] : _editingAttachment is null ? Text["Anexar comprovante"] : Text["Salvar alteracao"])</MudButton>
+                </div>
+            </article>
+        </div>
+    }
+
+    @if (_viewingExpense is not null && _viewingAttachment is not null)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseViewer">
+            <article class="connector-modal panel receipt-view-modal" @onclick:stopPropagation>
+                <div class="panel-heading"><div><MudText Typo="Typo.h5">Visualizar comprovante</MudText><MudText Typo="Typo.body2">@_viewingAttachment.FileName</MudText></div><MudIconButton OnClick="CloseViewer" ><MudIcon Icon="@Icons.Material.Filled.Close"  /></MudIconButton></div>
+                @if (_loadingPreview) { <div class="receipt-view-loading"><MudProgressCircular Indeterminate /><span>Carregando comprovante...</span></div> }
+                else if (!string.IsNullOrWhiteSpace(_viewUrl))
+                {
+                    <div class="receipt-preview receipt-preview-large">
+                        @if (_viewingAttachment.ContentType == "application/pdf") { <iframe src="@_viewUrl" title="@_viewingAttachment.FileName"></iframe> }
+                        else { <img src="@_viewUrl" alt="@_viewingAttachment.FileName" /> }
+                    </div>
+                    <MudButton Variant="Variant.Outlined" OnClick="OpenViewerInNewTab"><MudIcon Icon="@Icons.Material.Filled.OpenInNew"  />Abrir em nova aba</MudButton>
+                }
+            </article>
+        </div>
+    }
+
+    @if (_deletingExpense is not null)
+    {
+        <div class="connector-modal-backdrop" @onclick="CloseDelete">
+            <article class="connector-modal panel expense-delete-modal" @onclick:stopPropagation>
+                <span class="delete-receipt-icon"><MudIcon Icon="@Icons.Material.Filled.DeleteOutline"  /></span>
+                <MudText Typo="Typo.h5">O que deseja excluir?</MudText>
+                <MudText Typo="Typo.body2">Escolha com atenção. Essa ação não poderá ser desfeita.</MudText>
+                <div class="expense-delete-options">
+                    @if (_deletingAttachment is not null)
+                    {
+                        <button class="@DeleteOptionClass("attachment")" @onclick="SelectAttachmentDelete">
+                            <MudIcon Icon="@Icons.Material.Filled.AttachFile"  />
+                            <span><strong>Somente o comprovante</strong><small>Remove @_deletingAttachment.FileName e mantém a despesa.</small></span>
+                            <MudIcon Icon="@(_deleteScope == "attachment" ? Icons.Material.Filled.RadioButtonChecked : Icons.Material.Filled.RadioButtonUnchecked)" />
+                        </button>
+                    }
+                    <button class="@DeleteOptionClass("expense")" @onclick="SelectExpenseDelete">
+                        <MudIcon Icon="@Icons.Material.Filled.ReceiptLong"  />
+                        <span><strong>A despesa completa</strong><small>Remove @_deletingExpense.Description, seus comprovantes e o registro do banco.</small></span>
+                        <MudIcon Icon="@(_deleteScope == "expense" ? Icons.Material.Filled.RadioButtonChecked : Icons.Material.Filled.RadioButtonUnchecked)" />
+                    </button>
+                </div>
+                <div class="receipt-modal-buttons"><MudButton Variant="Variant.Text" OnClick="CloseDelete">Cancelar</MudButton><MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="_deleting" OnClick="ConfirmDeleteAsync">@(_deleting ? "Excluindo..." : _deleteScope == "expense" ? "Excluir despesa" : "Excluir comprovante")</MudButton></div>
+            </article>
+        </div>
+    }
+</div>
+</AppShellLayout>
+
+@code {
+    private static readonly string[] Categories = ["Payroll", "Rent", "Utilities", "Internet", "Software", "ProfessionalServices", "BankFees", "Other"];
+    private ExpenseModel[] _expenses = [];
+    private ExpenseCategoryModel[] _customCategories = [];
+    private ExpenseFormModel Form = new();
+    private MudForm? _form;
+    private ExpenseModel? _rejecting;
+    private string _rejectionReason = string.Empty;
+    private Guid? _busyId;
+    private bool _loading = true;
+    private bool _creating;
+    private bool _saving;
+    private ExpenseModel? _attachmentExpense;
+    private ExpenseAttachmentModel? _editingAttachment;
+    private IBrowserFile? _selectedFile;
+    private string? _previewDataUrl;
+    private bool _uploading;
+    private ExpenseModel? _viewingExpense;
+    private ExpenseAttachmentModel? _viewingAttachment;
+    private string? _viewUrl;
+    private bool _loadingPreview;
+    private ExpenseModel? _deletingExpense;
+    private ExpenseAttachmentModel? _deletingAttachment;
+    private string _deleteScope = "attachment";
+    private bool _deleting;
+    private bool _managingCategories;
+    private string _newCategoryName = string.Empty;
+    private bool _savingCategory;
+    private Guid? _deletingCategoryId;
+    private IEnumerable<string> AvailableCategories => Categories.Concat(_customCategories.Select(x => x.Name));
+    private bool CanReview => Auth.CurrentUser?.Roles.Any(x => x is "Admin" or "Contador") == true;
+    private bool CanWrite => Auth.CurrentUser?.Roles.Any(x => x is "Admin" or "Vendedor") == true;
+
+    protected override Task OnInitializedAsync() =>
+        OperatingSystem.IsBrowser() ? LoadAsync() : Task.CompletedTask;
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var expensesTask = ExpensesService.GetAsync();
+        var categoriesTask = ExpensesService.GetCategoriesAsync();
+        await Task.WhenAll(expensesTask, categoriesTask);
+        _loading = false;
+        var expensesResult = await expensesTask;
+        var categoriesResult = await categoriesTask;
+        if (expensesResult.Succeeded) _expenses = expensesResult.Value!;
+        else Snackbar.Add(expensesResult.Error!, Severity.Error);
+        if (categoriesResult.Succeeded) _customCategories = categoriesResult.Value!;
+        else Snackbar.Add(categoriesResult.Error!, Severity.Error);
+    }
+    private void OpenCreate() { Form = new ExpenseFormModel(); _creating = true; }
+    private void CloseCreate() => _creating = false;
+    private void OpenCategories() { _newCategoryName = string.Empty; _managingCategories = true; }
+    private void CloseCategories() { if (!_savingCategory && _deletingCategoryId is null) _managingCategories = false; }
+    private async Task CreateCategoryAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newCategoryName)) return;
+        _savingCategory = true;
+        var result = await ExpensesService.CreateCategoryAsync(_newCategoryName.Trim());
+        _savingCategory = false;
+        if (!result.Succeeded) { Snackbar.Add(result.Error!, Severity.Error); return; }
+        _newCategoryName = string.Empty;
+        _customCategories = _customCategories.Append(result.Value!).OrderBy(x => x.Name).ToArray();
+        Snackbar.Add(Text["Categoria personalizada criada."], Severity.Success);
+    }
+    private async Task DeleteCategoryAsync(ExpenseCategoryModel category)
+    {
+        _deletingCategoryId = category.Id;
+        var result = await ExpensesService.DeleteCategoryAsync(category.Id);
+        _deletingCategoryId = null;
+        if (!result.Succeeded) { Snackbar.Add(result.Error!, Severity.Error); return; }
+        _customCategories = _customCategories.Where(x => x.Id != category.Id).ToArray();
+        Snackbar.Add(Text["Categoria removida."], Severity.Success);
+    }
+    private async Task CreateAsync() { await _form!.ValidateAsync(); if (!_form.IsValid || Form.CompetenceDate is null || Form.Amount <= 0) return; _saving = true; var request = new ExpenseRequestModel(Form.Description, Form.Category, Form.Supplier, DateOnly.FromDateTime(Form.CompetenceDate.Value), Form.DueDate is null ? null : DateOnly.FromDateTime(Form.DueDate.Value), Form.Amount, Form.Notes); var result = await ExpensesService.CreateAsync(request); _saving = false; if (!result.Succeeded) { Snackbar.Add(result.Error!, Severity.Error); return; } _creating = false; Snackbar.Add(Text["Despesa salva. Anexe o comprovante para enviar a revisao."], Severity.Success); await LoadAsync(); }
+    private bool CanEdit(ExpenseModel expense) => expense.Status is "Draft" or "Rejected";
+    private void OpenAttachmentModal(ExpenseModel expense, ExpenseAttachmentModel? attachment = null)
+    {
+        _attachmentExpense = expense; _editingAttachment = attachment; _selectedFile = null; _previewDataUrl = null;
+    }
+    private void CloseAttachmentModal()
+    {
+        if (_uploading) return;
+        _attachmentExpense = null; _editingAttachment = null; _selectedFile = null; _previewDataUrl = null;
+    }
+    private async Task SelectAttachmentFile(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file.Size is <= 0 or > 10 * 1024 * 1024) { Snackbar.Add(Text["O comprovante deve ter no maximo 10 MB."], Severity.Error); return; }
+        _selectedFile = file;
+        await using var source = file.OpenReadStream(10 * 1024 * 1024);
+        using var memory = new MemoryStream();
+        await source.CopyToAsync(memory);
+        _previewDataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(memory.ToArray())}";
+    }
+    private async Task SaveAttachmentAsync()
+    {
+        if (_attachmentExpense is null || _selectedFile is null) return;
+        _uploading = true;
+        var result = _editingAttachment is null
+            ? await ExpensesService.UploadAsync(_attachmentExpense.Id, _selectedFile)
+            : await ExpensesService.ReplaceAsync(_attachmentExpense.Id, _editingAttachment.Id, _selectedFile);
+        _uploading = false;
+        Snackbar.Add(result.Succeeded ? Text["Comprovante salvo com seguranca."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error);
+        if (result.Succeeded) { CloseAttachmentModal(); await LoadAsync(); }
+    }
+    private async Task OpenViewerAsync(ExpenseModel expense, ExpenseAttachmentModel attachment)
+    {
+        _viewingExpense = expense; _viewingAttachment = attachment; _viewUrl = null; _loadingPreview = true;
+        var result = await ExpensesService.GetDownloadAsync(expense.Id, attachment.Id);
+        _loadingPreview = false;
+        if (result.Succeeded) _viewUrl = result.Value!.Url;
+        else { Snackbar.Add(result.Error!, Severity.Error); CloseViewer(); }
+    }
+    private void CloseViewer() { _viewingExpense = null; _viewingAttachment = null; _viewUrl = null; }
+    private void OpenViewerInNewTab() { if (_viewUrl is not null) Navigation.NavigateTo(_viewUrl, forceLoad: true); }
+    private void OpenDelete(ExpenseModel expense, ExpenseAttachmentModel? attachment = null)
+    {
+        _deletingExpense = expense; _deletingAttachment = attachment;
+        _deleteScope = attachment is null ? "expense" : "attachment";
+    }
+    private void CloseDelete() { if (_deleting) return; _deletingExpense = null; _deletingAttachment = null; _deleteScope = "attachment"; }
+    private void SelectAttachmentDelete() => _deleteScope = "attachment";
+    private void SelectExpenseDelete() => _deleteScope = "expense";
+    private string DeleteOptionClass(string option) => $"expense-delete-option{(_deleteScope == option ? " selected" : string.Empty)}";
+    private async Task ConfirmDeleteAsync()
+    {
+        if (_deletingExpense is null || (_deleteScope == "attachment" && _deletingAttachment is null)) return;
+        _deleting = true;
+        var result = _deleteScope == "expense"
+            ? await ExpensesService.DeleteAsync(_deletingExpense.Id)
+            : await ExpensesService.DeleteAttachmentAsync(_deletingExpense.Id, _deletingAttachment!.Id);
+        _deleting = false;
+        var successMessage = _deleteScope == "expense" ? "Despesa e comprovantes excluídos." : "Comprovante excluído.";
+        Snackbar.Add(result.Succeeded ? successMessage : result.Error!, result.Succeeded ? Severity.Success : Severity.Error);
+        if (result.Succeeded) { CloseDelete(); await LoadAsync(); }
+    }
+    private async Task SubmitAsync(ExpenseModel expense) { _busyId = expense.Id; var result = await ExpensesService.SubmitAsync(expense.Id); _busyId = null; Snackbar.Add(result.Succeeded ? Text["Despesa enviada para revisao."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) await LoadAsync(); }
+    private async Task ApproveAsync(ExpenseModel expense) { _busyId = expense.Id; var result = await ExpensesService.ApproveAsync(expense.Id); _busyId = null; Snackbar.Add(result.Succeeded ? Text["Despesa aprovada e lancada na DRE."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) await LoadAsync(); }
+    private void OpenReject(ExpenseModel expense) { _rejecting = expense; _rejectionReason = string.Empty; }
+    private void CloseReject() => _rejecting = null;
+    private async Task RejectAsync() { if (_rejecting is null) return; var result = await ExpensesService.RejectAsync(_rejecting.Id, _rejectionReason); Snackbar.Add(result.Succeeded ? Text["Despesa devolvida para correcao."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error); if (result.Succeeded) { _rejecting = null; await LoadAsync(); } }
+    private static string FormatSize(long bytes) => bytes < 1024 * 1024 ? $"{bytes / 1024d:0.#} KB" : $"{bytes / 1024d / 1024d:0.#} MB";
+    private static string Money(decimal value) => value.ToString("C", CultureInfo.CurrentCulture);
+    private string CategoryLabel(string category) => category switch { "Payroll" => Text["Folha de pagamento"], "Rent" => Text["Aluguel"], "Utilities" => Text["Energia e utilidades"], "Internet" => Text["Internet e telefonia"], "Software" => Text["Software e assinaturas"], "ProfessionalServices" => Text["Servicos profissionais"], "BankFees" => Text["Despesas bancarias"], "Other" => Text["Outras despesas"], _ => category };
+    private string StatusLabel(string status) => status switch { "Draft" => Text["Rascunho"], "PendingReview" => Text["Em revisao"], "Approved" => Text["Aprovada"], "Rejected" => Text["Rejeitada"], _ => status };
+    private static Color StatusColor(string status) => status switch { "Approved" => Color.Success, "PendingReview" => Color.Warning, "Rejected" => Color.Error, _ => Color.Default };
+}

@@ -1,0 +1,17 @@
+**/bin/
+**/obj/
+Avallo.Web/connectors/
+.vs/
+.idea/
+.vscode/
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.backup
+**/*.user
+**/*.pubxml
+**/*.pdb
+.env
+.local-app.*.log
+
+# Load test artifacts
+load-test-results/

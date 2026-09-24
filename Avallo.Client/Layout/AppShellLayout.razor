@@ -1,0 +1,262 @@
+@implements IDisposable
+@inject AuthService Auth
+@inject NavigationManager Navigation
+@inject NotificationService Notifications
+@inject AppLocalizer Text
+@inject IJSRuntime JavaScript
+
+<MudThemeProvider Theme="Theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+<DeploymentNoticeBanner />
+<UpdateNotificationModal />
+
+<MudLayout Class="app-shell">
+    <MudAppBar Elevation="3" Class="topbar">
+        <MudTooltip Text="@Text["Abrir menu de navegacao"]" Placement="Placement.Bottom">
+            <MudIconButton Color="Color.Inherit" OnClick="ToggleDrawer" Class="mobile-menu" aria-label="@Text["Abrir menu"]"><MudIcon Icon="@Icons.Material.Filled.Menu"  /></MudIconButton>
+        </MudTooltip>
+        <MudText Typo="Typo.h6" Class="topbar-context">@Text[PageContext]</MudText>
+        <MudSpacer />
+        <MudTooltip Text="@Text["Alternar idioma"]" Placement="Placement.Bottom">
+            <MudMenu Variant="Variant.Text" Dense Class="language-menu" AriaLabel="@Text["Idioma"]">
+                <ActivatorContent>
+                    <div class="language-trigger-btn" @onclick="context.ToggleAsync">
+                        <span class="flag-icon">@((MarkupString)Text.CurrentCulture.FlagSvg)</span>
+                        <span class="language-code">@Text.CurrentCulture.ShortName</span>
+                        <MudIcon Icon="@Icons.Material.Filled.KeyboardArrowDown" Class="mud-icon-size-small"  />
+                    </div>
+                </ActivatorContent>
+                <ChildContent>
+                    @foreach (var culture in AppLocalizer.SupportedCultures)
+                    {
+                        var isCurrent = culture.Name == Text.CurrentCulture.Name;
+                        <MudMenuItem OnClick="() => ChangeCultureAsync(culture.Name)" Class="@(isCurrent ? "selected-culture-item" : null)">
+                            <div class="culture-item-row">
+                                <span class="flag-icon">@((MarkupString)culture.FlagSvg)</span>
+                                <span class="culture-label">@culture.DisplayName</span>
+                                @if (isCurrent)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Check" Class="mud-icon-size-small current-check"  />
+                                }
+                            </div>
+                        </MudMenuItem>
+                    }
+                </ChildContent>
+            </MudMenu>
+        </MudTooltip>
+        <MudTooltip Text="@Text["Notificacoes"]" Placement="Placement.Bottom">
+            <MudBadge Content="_unreadCount" Color="Color.Error" Overlap Bordered="false" Visible="@(_unreadCount > 0)">
+             <MudIconButton Color="Color.Inherit" Href="/notifications" aria-label="@Text["Notificacoes"]"><MudIcon Icon="@Icons.Material.Filled.Notifications"  /></MudIconButton>
+            </MudBadge>
+        </MudTooltip>
+        @if (Auth.CurrentUser is { } user)
+        {
+            <div class="profile-menu-container">
+                @if (_profileMenuOpen)
+                {
+                    <div class="popover-backdrop" @onclick="CloseProfileMenu"></div>
+                }
+                <button type="button" class="profile-trigger-btn" @onclick="ToggleProfileMenu">
+                    <div class="avatar-wrapper">
+                        <span class="avatar avatar-small">@user.Initials</span>
+                        <span class="online-dot"></span>
+                    </div>
+                    <span class="profile-trigger-copy">
+                        <strong class="profile-name">@user.DisplayName</strong>
+                        <small class="profile-email">@user.Email</small>
+                    </span>
+                </button>
+            </div>
+        }
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md"
+               Elevation="3" Class="nav-drawer">
+        <div class="drawer-inner">
+            <a class="brand drawer-brand" href="/dashboard" aria-label="Avallo">
+                <span class="brand-mark">A</span>
+                <span class="brand-copy"><strong>Avallo</strong><small>Gestão inteligente</small></span>
+            </a>
+            <MudText Typo="Typo.overline" Class="nav-label" Color="Color.Primary">@Text["Workspace"]</MudText>
+            <MudNavMenu Class="nav-menu">
+                @if (IsBpoRole)
+                {
+                    <MudNavLink Href="bpo" Icon="@Icons.Material.Outlined.FactCheck">BPO Contábil</MudNavLink>
+                }
+                @if (!IsBpoRole)
+                {
+                <MudNavLink Href="dashboard" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.Analytics">@Text["Painel e relatorios"]</MudNavLink>
+                <MudNavGroup Title="@Text["Financeiro"]" Icon="@Icons.Material.Outlined.AccountBalance" Class="nav-group-finance" @bind-Expanded="FinanceExpanded">
+                    <MudNavLink Href="dre" Icon="@Icons.Material.Outlined.AccountBalance">@Text["DRE preliminar"]</MudNavLink>
+                    <MudNavLink Href="expenses" Icon="@Icons.Material.Outlined.ReceiptLong">@Text["Despesas"]</MudNavLink>
+                    <MudNavLink Href="reconciliation" Icon="@Icons.Material.Outlined.AccountBalanceWallet">@Text["Conciliacao financeira"]</MudNavLink>
+                </MudNavGroup>
+                <MudNavGroup Title="@Text["Operacao"]" Icon="@Icons.Material.Outlined.Domain" Class="nav-group-operation" @bind-Expanded="OperationExpanded">
+                    <MudNavLink Href="inventory" Icon="@Icons.Material.Outlined.Inventory2">@Text["Estoque e CMV"]</MudNavLink>
+                    <MudNavLink Href="fiscal" Icon="@Icons.Material.Outlined.Gavel">@Text["Fiscal e impostos"]</MudNavLink>
+                    <MudNavLink Href="closing" Icon="@Icons.Material.Outlined.LockClock">@Text["Fechamento mensal"]</MudNavLink>
+                </MudNavGroup>
+                <MudNavGroup Title="@Text["Integracoes"]" Icon="@Icons.Material.Outlined.Extension" Class="nav-group-integrations" @bind-Expanded="IntegrationsExpanded">
+                    <MudNavLink Href="connectors" Icon="@Icons.Material.Outlined.Hub">@Text["Conectores"]</MudNavLink>
+                    <MudNavLink Href="notifications" Icon="@Icons.Material.Outlined.NotificationsNone">@Text["Notificacoes"]</MudNavLink>
+                </MudNavGroup>
+                }
+                <MudNavGroup Title="@Text["Conta"]" Icon="@Icons.Material.Outlined.AdminPanelSettings" Class="nav-group-account" @bind-Expanded="AccountExpanded">
+                    @if (Auth.CurrentUser?.Roles.Contains("Admin") == true)
+                    {
+                        <MudNavLink Href="users" Icon="@Icons.Material.Outlined.ManageAccounts">@Text["Acessos da empresa"]</MudNavLink>
+                    }
+                    <MudNavLink Href="profile" Icon="@Icons.Material.Outlined.PersonOutline">@Text["Meu perfil"]</MudNavLink>
+                </MudNavGroup>
+            </MudNavMenu>
+            <MudSpacer />
+            <div class="security-card">
+                 <MudIcon Icon="@Icons.Material.Filled.GppGood"  />
+                  <div><strong>@Text["Tenant protegido"]</strong><small>@Text["Isolamento ativo"]</small></div>
+            </div>
+             <MudTooltip Text="@Text["Encerrar sessao e sair da conta"]" Placement="Placement.Right">
+                 <MudButton Variant="Variant.Text" FullWidth Class="logout-button" OnClick="LogoutAsync"><MudIcon Icon="@Icons.Material.Filled.Logout"  />@Text["Sair da conta"]</MudButton>
+            </MudTooltip>
+        </div>
+    </MudDrawer>
+
+    <MudMainContent Class="main-content">
+        @if (!_ready)
+        {
+            <div class="route-loader"><MudProgressCircular Indeterminate Color="Color.Primary" /><span>@Text["Preparando seu workspace..."]</span></div>
+        }
+        else
+        {
+            @ChildContent
+        }
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    [Parameter, EditorRequired] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string PageContext { get; set; } = "Workspace";
+    private bool _drawerOpen = true;
+    private bool _ready;
+    private int _unreadCount;
+    private bool _financeExpanded;
+    private bool _operationExpanded;
+    private bool _integrationsExpanded;
+    private bool _accountExpanded;
+    private bool FinanceExpanded { get => _financeExpanded; set => SetExpanded(NavSection.Finance, value); }
+    private bool OperationExpanded { get => _operationExpanded; set => SetExpanded(NavSection.Operation, value); }
+    private bool IntegrationsExpanded { get => _integrationsExpanded; set => SetExpanded(NavSection.Integrations, value); }
+    private bool AccountExpanded { get => _accountExpanded; set => SetExpanded(NavSection.Account, value); }
+    private bool IsBpoRole => Auth.CurrentUser?.Roles.Any(x => x is "OperadorBPO" or "AdministradorBPO") == true;
+
+    private static readonly MudTheme Theme = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#3F78F6",
+            Secondary = "#26343B",
+            Background = "#F4F6F9",
+            Surface = "#FFFFFF",
+            TextPrimary = "#26343B",
+            TextSecondary = "#66727A",
+            DrawerBackground = "#26343B",
+            DrawerText = "#F7F9FC",
+            AppbarBackground = "#FFFFFF",
+            AppbarText = "#26343B",
+            Success = "#2E9B73",
+            Warning = "#EF907B",
+            Error = "#C95252",
+            Info = "#3F78F6"
+        },
+        LayoutProperties = new LayoutProperties { DefaultBorderRadius = "10px", DrawerWidthLeft = "285px" }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.SessionChanged += OnSessionChanged;
+        ExpandForCurrentRoute();
+        await Auth.InitializeAsync();
+        if (!OperatingSystem.IsBrowser())
+        {
+            _ready = true;
+            return;
+        }
+        if (!Auth.IsAuthenticated)
+        {
+            Navigation.NavigateTo($"/login?returnUrl={Uri.EscapeDataString(Navigation.ToBaseRelativePath(Navigation.Uri))}");
+            return;
+        }
+        if (Auth.CurrentUser?.RequiresPasswordChange == true &&
+            !Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("profile", StringComparison.OrdinalIgnoreCase))
+        {
+            Navigation.NavigateTo("/profile");
+            return;
+        }
+        var notifications = await Notifications.GetAsync(unreadOnly: true);
+        if (notifications.Succeeded)
+            _unreadCount = notifications.Value!.UnreadCount;
+        _ready = true;
+    }
+
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+    private void ExpandForCurrentRoute()
+    {
+        var route = Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/').ToLowerInvariant();
+        var section = route switch
+        {
+            "dre" or "expenses" or "reconciliation" => NavSection.Finance,
+            "inventory" or "fiscal" or "closing" => NavSection.Operation,
+            "connectors" or "notifications" => NavSection.Integrations,
+            "users" or "profile" => NavSection.Account,
+            _ => NavSection.None
+        };
+        SetExpanded(section, section != NavSection.None);
+    }
+
+    private void SetExpanded(NavSection section, bool expanded)
+    {
+        if (!expanded)
+        {
+            if (section == NavSection.Finance) _financeExpanded = false;
+            if (section == NavSection.Operation) _operationExpanded = false;
+            if (section == NavSection.Integrations) _integrationsExpanded = false;
+            if (section == NavSection.Account) _accountExpanded = false;
+            return;
+        }
+        _financeExpanded = section == NavSection.Finance;
+        _operationExpanded = section == NavSection.Operation;
+        _integrationsExpanded = section == NavSection.Integrations;
+        _accountExpanded = section == NavSection.Account;
+    }
+    private bool _profileMenuOpen;
+    private void ToggleProfileMenu() => _profileMenuOpen = !_profileMenuOpen;
+    private void CloseProfileMenu() => _profileMenuOpen = false;
+    private void NavigateAndClose(string uri)
+    {
+        _profileMenuOpen = false;
+        Navigation.NavigateTo(uri);
+    }
+    private async Task LogoutAndClose()
+    {
+        _profileMenuOpen = false;
+        await LogoutAsync();
+    }
+    private void GoToProfile() => Navigation.NavigateTo("/profile");
+    private async Task ChangeCultureAsync(string cultureName)
+    {
+        if (cultureName == Text.CurrentCulture.Name) return;
+        await JavaScript.InvokeVoidAsync("localStorage.setItem", "nucleo.culture", cultureName);
+        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+    }
+
+    private async Task LogoutAsync()
+    {
+        await Auth.LogoutAsync();
+        Navigation.NavigateTo("/login", replace: true);
+    }
+
+    private void OnSessionChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Auth.SessionChanged -= OnSessionChanged;
+    private enum NavSection { None, Finance, Operation, Integrations, Account }
+}

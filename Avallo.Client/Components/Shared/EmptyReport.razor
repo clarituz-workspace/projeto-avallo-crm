@@ -1,0 +1,10 @@
+<div class="report-empty @(Compact ? "compact" : null)">
+    <span><MudIcon Icon="@Icon" /></span>
+    <MudText Typo="Typo.body2">@Text</MudText>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Icon { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Text { get; set; } = string.Empty;
+    [Parameter] public bool Compact { get; set; }
+}

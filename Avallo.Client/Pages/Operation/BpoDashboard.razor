@@ -1,0 +1,45 @@
+@page "/bpo"
+@rendermode InteractiveWebAssembly
+@inject BpoClient BpoApi
+@inject AuthService Auth
+@inject ISnackbar Snackbar
+
+<PageTitle>BPO Contábil | Avallo</PageTitle>
+<AppShellLayout PageContext="BPO Contábil">
+<div class="page-container report-page">
+    <header class="page-header"><div><MudText Typo="Typo.overline" Color="Color.Primary">OPERAÇÃO INTERNA</MudText><MudText Typo="Typo.h3">BPO Contábil</MudText><MudText Typo="Typo.body1">Revise e assine competências das empresas atribuídas à sua carteira.</MudText></div></header>
+    @if (_loading) { <MudProgressLinear Indeterminate Color="Color.Primary" /> }
+    else if (!IsBpo) { <MudAlert Severity="Severity.Error">Acesso exclusivo para operadores internos BPO.</MudAlert> }
+    else
+    {
+        <section class="closing-metrics">
+            <article class="metric-card"><MudText Typo="Typo.caption">AGUARDANDO REVISÃO</MudText><MudText Typo="Typo.h4">@_dashboard.AwaitingReview</MudText></article>
+            <article class="metric-card"><MudText Typo="Typo.caption">PRONTOS PARA FECHAR</MudText><MudText Typo="Typo.h4">@_dashboard.ReadyToClose</MudText></article>
+            <article class="metric-card"><MudText Typo="Typo.caption">CARTEIRA EM FILA</MudText><MudText Typo="Typo.h4">@_dashboard.Periods.Length</MudText></article>
+        </section>
+        <section class="panel entries-panel mt-6">
+            <div class="entries-toolbar"><div><MudText Typo="Typo.h5">Competências atribuídas</MudText><MudText Typo="Typo.body2">O processamento em lote respeita estado, tenant e trilha de auditoria individual.</MudText></div><div><MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_selected.Count == 0 || _busy)" OnClick="ApproveSelectedAsync">Aprovar selecionados</MudButton><MudButton Variant="Variant.Outlined" Class="ml-2" Disabled="@(_selected.Count == 0 || _busy)" OnClick="CloseSelectedAsync">Assinar e fechar</MudButton></div></div>
+            <AppQuickGrid TItem="BpoPeriodItemModel" Items="@_dashboard.Periods.AsQueryable()" ItemKey="@((BpoPeriodItemModel x) => x.PeriodId)" PageSize="20"><Columns>
+                <AppTemplateColumn TItem="BpoPeriodItemModel"><MudCheckBox T="bool" Value="@_selected.Contains(context.PeriodId)" ValueChanged="value => Select(context.PeriodId, value)" /></AppTemplateColumn>
+                <AppPropertyColumn TItem="BpoPeriodItemModel" TProperty="string" Property="@(x => x.TenantName)" Title="Empresa" />
+                <AppTemplateColumn TItem="BpoPeriodItemModel" Title="Competência"><strong>@context.Month.ToString("D2")/@context.Year</strong></AppTemplateColumn>
+                <AppPropertyColumn TItem="BpoPeriodItemModel" TProperty="string" Property="@(x => x.Status)" Title="Status" />
+                <AppTemplateColumn TItem="BpoPeriodItemModel" Title="Validado em">@(context.ValidatedAt?.ToLocalTime().ToString("g") ?? "—")</AppTemplateColumn>
+            </Columns></AppQuickGrid>
+        </section>
+    }
+</div>
+</AppShellLayout>
+
+@code {
+    private BpoDashboardModel _dashboard = new([], 0, 0);
+    private readonly HashSet<Guid> _selected = [];
+    private bool _loading = true, _busy;
+    private bool IsBpo => Auth.CurrentUser?.Roles.Any(x => x is "OperadorBPO" or "AdministradorBPO") == true;
+    protected override async Task OnInitializedAsync() { if (!OperatingSystem.IsBrowser()) return; if (IsBpo) await LoadAsync(); else _loading = false; }
+    private async Task LoadAsync() { _loading = true; var result = await BpoApi.GetDashboardAsync(); _loading = false; if (result.Succeeded) _dashboard = result.Value!; else Snackbar.Add(result.Error!, Severity.Error); }
+    private void Select(Guid id, bool selected) { if (selected) _selected.Add(id); else _selected.Remove(id); }
+    private Task ApproveSelectedAsync() => ExecuteAsync("Approve");
+    private Task CloseSelectedAsync() => ExecuteAsync("Close");
+    private async Task ExecuteAsync(string action) { _busy = true; var result = await BpoApi.ExecuteBatchAsync(_selected.ToArray(), action); _busy = false; if (!result.Succeeded) { Snackbar.Add(result.Error!, Severity.Error); return; } Snackbar.Add($"{result.Value!.Succeeded} processados; {result.Value.Failed} falharam.", result.Value.Failed == 0 ? Severity.Success : Severity.Warning); _selected.Clear(); await LoadAsync(); }
+}

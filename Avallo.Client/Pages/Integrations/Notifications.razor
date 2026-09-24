@@ -1,0 +1,218 @@
+@page "/notifications"
+@rendermode InteractiveWebAssembly
+@using System.Globalization
+@inject NotificationService NotificationsService
+@inject WebPushNotificationService WebPush
+@inject AppLocalizer Text
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject IJSRuntime JavaScript
+
+<PageTitle>@Text["Notificacoes"] | Avallo</PageTitle>
+
+<AppShellLayout PageContext="@Text["Notificacoes e alertas"]">
+<div class="page-container notifications-page">
+    <header class="page-header">
+        <div><MudText Typo="Typo.overline" Color="Color.Primary">@Text["Central de comunicacao"]</MudText><MudText Typo="Typo.h3">@Text["Notificacoes e alertas"]</MudText><MudText Typo="Typo.body1">@Text["Acompanhe eventos importantes e escolha o que deseja receber."]</MudText></div>
+        @if (_data.UnreadCount > 0)
+        {
+            <MudTooltip Text="@Text["Marcar todas as notificacoes como lidas"]" Placement="Placement.Bottom">
+                <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="MarkAllReadAsync"><MudIcon Icon="@Icons.Material.Filled.DoneAll"  />@Text["Marcar todas como lidas"]</MudButton>
+            </MudTooltip>
+        }
+    </header>
+
+    <section class="notification-layout">
+        <article class="panel notification-inbox">
+            <div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Caixa de entrada"]</MudText><MudText Typo="Typo.body2">@UnreadLabel</MudText></div><MudChip T="string" Size="Size.Small" Color="Color.Primary">@_data.Items.Length @Text["recentes"]</MudChip></div>
+            @if (_loading)
+            {
+                <div class="mt-4">
+                    @for (int i = 0; i < 3; i++)
+                    {
+                        <div class="d-flex align-center mb-4">
+                            <MudSkeleton SkeletonType="SkeletonType.Circle" Width="36px" Height="36px" Class="mr-3" />
+                            <div style="flex-grow: 1;">
+                                <MudSkeleton Width="150px" Height="18px" Class="mb-1" />
+                                <MudSkeleton Width="100%" Height="15px" />
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else if (_data.Items.Length == 0)
+            {
+                <EmptyReport Icon="@Icons.Material.Filled.NotificationsNone" Text="@Text["Nenhuma notificacao por aqui. Novos alertas aparecerao automaticamente."]" />
+            }
+            else
+            {
+                <div class="notification-list">
+                    @foreach (var item in _data.Items)
+                    {
+                        <button class="notification-item @(!item.IsRead ? "unread" : null)" @onclick="() => OpenAsync(item)">
+                            <span class="notification-type @TypeClass(item.Type)"><MudIcon Icon="@TypeIcon(item.Type)"  /></span>
+                            <span class="notification-copy"><strong>@LocalizedTitle(item.Title)</strong><span>@Text[item.Message]</span><small>@RelativeTime(item.CreatedAt)</small></span>
+                            @if (!item.IsRead) { <span class="unread-dot"></span> }
+                        </button>
+                    }
+                </div>
+            }
+        </article>
+
+        <aside class="panel notification-settings">
+            <div class="panel-heading"><div><MudText Typo="Typo.h5">@Text["Preferencias"]</MudText><MudText Typo="Typo.body2">@Text["Controle os envios automaticos."]</MudText></div><span class="metric-icon compact"><MudIcon Icon="@Icons.Material.Filled.SettingsSuggest"  /></span></div>
+
+            <div class="webpush-card px-5 pt-3 pb-2">
+                <div class="d-flex align-center justify-space-between mb-2">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.NotificationsActive" Class="@(_pushPermission == "granted" ? "text-success" : "text-warning")"  />
+                         <strong>@Text["Web Push Browser"]</strong>
+                    </div>
+                    <MudChip T="string" Size="Size.Small" Color="@(_pushPermission == "granted" ? Color.Success : Color.Default)">
+                         @(_pushPermission == "granted" ? Text["Ativado"] : _pushPermission == "denied" ? Text["Bloqueado"] : Text["Pendente"])
+                    </MudChip>
+                </div>
+                <small class="d-block text-muted mb-3">@Text["Receba alertas nativos na area de trabalho e no celular mesmo com o navegador em segundo plano."]</small>
+                @if (_pushPermission != "granted")
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth OnClick="EnableWebPushAsync" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.NotificationsNone"  />
+                         @Text["Ativar notificacoes no navegador"]
+                    </MudButton>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" FullWidth OnClick="TestWebPushAsync"><MudIcon Icon="@Icons.Material.Filled.Send"  />
+                         @Text["Enviar notificacao de teste"]
+                    </MudButton>
+                }
+            </div>
+            <MudDivider Class="my-3" />
+
+            <div class="preference-list">
+                <div class="preference-item"><span class="preference-icon"><MudIcon Icon="@Icons.Material.Filled.CalendarMonth"  /></span><div><strong>@Text["Fechamento mensal"]</strong><small>@Text["Resumo consolidado por e-mail."]</small></div><MudSwitch T="bool" @bind-Value="Preferences.MonthlyCloseEmail" Color="Color.Primary" /></div>
+                <div class="preference-item"><span class="preference-icon"><MudIcon Icon="@Icons.Material.Filled.Payments"  /></span><div><strong>@Text["Liberacao de repasse"]</strong><small>@Text["Avise antes do pagamento de qualquer marketplace."]</small></div><MudSwitch T="bool" @bind-Value="Preferences.MarketplaceReleaseAlert" Color="Color.Primary" /></div>
+                @if (Preferences.MarketplaceReleaseAlert)
+                {
+                    <MudSelect T="int" @bind-Value="Preferences.MarketplaceReleaseAlertDays" Label="@Text["Antecedencia do alerta"]" Variant="Variant.Outlined" Margin="Margin.Dense" Class="alert-days">
+                        @for (var day = 1; day <= 7; day++) { <MudSelectItem Value="@day">@day @(day == 1 ? Text["dia antes"] : Text["dias antes"])</MudSelectItem> }
+                    </MudSelect>
+                }
+                <div class="preference-item"><span class="preference-icon"><MudIcon Icon="@Icons.Material.Filled.ShoppingBag"  /></span><div><strong>@Text["Nova venda"]</strong><small>@Text["Opcional, desativado por padrao."]</small></div><MudSwitch T="bool" @bind-Value="Preferences.NewSaleNotification" Color="Color.Primary" /></div>
+                <div class="preference-item"><span class="preference-icon"><MudIcon Icon="@Icons.Material.Filled.RequestQuote"  /></span><div><strong>@Text["Relatorio do contador"]</strong><small>@Text["PDF consolidado toda semana."]</small></div><MudSwitch T="bool" @bind-Value="Preferences.WeeklyAccountantReport" Color="Color.Primary" /></div>
+            </div>
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense Class="my-5">@Text["E-mails dependem da configuracao SMTP do workspace."]</MudAlert>
+            <MudTooltip Text="@Text["Salvar configuracoes de notificacao"]" Placement="Placement.Bottom">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Disabled="_saving" OnClick="SavePreferencesAsync">@Text["Salvar preferencias"]</MudButton>
+            </MudTooltip>
+        </aside>
+    </section>
+</div>
+</AppShellLayout>
+
+@code {
+    private NotificationListModel _data = new([], 0);
+    private NotificationPreferenceModel Preferences = new();
+    private bool _loading = true;
+    private bool _saving;
+    private string _pushPermission = "default";
+    private string UnreadLabel => _data.UnreadCount == 0 ? Text["Tudo em dia."] : $"{_data.UnreadCount} {(_data.UnreadCount == 1 ? Text["nao lida"] : Text["nao lidas"])}.";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!OperatingSystem.IsBrowser())
+            return;
+        _pushPermission = await WebPush.GetPermissionStatusAsync();
+        var notifications = await NotificationsService.GetAsync();
+        if (notifications.Succeeded) _data = notifications.Value!;
+        var preferences = await NotificationsService.GetPreferencesAsync();
+        if (preferences.Succeeded) Preferences = preferences.Value!;
+        _loading = false;
+    }
+
+    private async Task EnableWebPushAsync()
+    {
+        _pushPermission = await WebPush.RequestPermissionAsync();
+        if (_pushPermission == "granted")
+        {
+            await JavaScript.InvokeVoidAsync("nucleoSounds.playBell");
+            Snackbar.Add(Text["Notificacoes Web Push ativadas com sucesso!"], Severity.Success);
+            await WebPush.ShowNativeNotificationAsync("Avallo", Text["Notificacoes Web Push ativadas para este dispositivo."], "/favicon.png", "/notifications");
+        }
+        else if (_pushPermission == "denied")
+        {
+            Snackbar.Add(Text["Permissao de notificacao foi bloqueada no navegador."], Severity.Warning);
+        }
+    }
+
+    private async Task TestWebPushAsync()
+    {
+        var sent = await WebPush.ShowNativeNotificationAsync(
+            Text["Alerta de Teste | Avallo"],
+            Text["Esta e uma notificacao nativa do sistema Web Push enviada para o seu dispositivo!"],
+            "/favicon.png",
+            "/notifications");
+        await JavaScript.InvokeVoidAsync("nucleoSounds.playBell");
+        if (sent)
+            Snackbar.Add(Text["Notificacao enviada ao sistema operacional."], Severity.Info);
+        else
+            Snackbar.Add(Text["Nao foi possivel emitir a notificacao. Verifique as permissoes."], Severity.Warning);
+    }
+
+    private async Task OpenAsync(NotificationModel item)
+    {
+        if (!item.IsRead)
+        {
+            await NotificationsService.MarkReadAsync(item.Id);
+            _data = _data with { Items = _data.Items.Select(x => x.Id == item.Id ? x with { IsRead = true } : x).ToArray(), UnreadCount = Math.Max(0, _data.UnreadCount - 1) };
+        }
+        if (!string.IsNullOrWhiteSpace(item.Link)) Navigation.NavigateTo(item.Link);
+    }
+
+    private async Task MarkAllReadAsync()
+    {
+        var result = await NotificationsService.MarkAllReadAsync();
+        if (result.Succeeded) _data = _data with { Items = _data.Items.Select(x => x with { IsRead = true }).ToArray(), UnreadCount = 0 };
+    }
+
+    private async Task SavePreferencesAsync()
+    {
+        _saving = true;
+        var result = await NotificationsService.SavePreferencesAsync(Preferences);
+        _saving = false;
+        Snackbar.Add(result.Succeeded ? Text["Preferencias atualizadas."] : result.Error!, result.Succeeded ? Severity.Success : Severity.Error);
+    }
+
+    private static string TypeIcon(string type) => type switch
+    {
+        "MonthlyClose" => Icons.Material.Filled.CalendarMonth,
+        "MarketplaceRelease" => Icons.Material.Filled.Payments,
+        "NewSale" => Icons.Material.Filled.ShoppingBag,
+        "WeeklyAccountantReport" => Icons.Material.Filled.RequestQuote,
+        _ => Icons.Material.Filled.Notifications
+    };
+    private static string TypeClass(string type) => type switch { "MarketplaceRelease" => "warning", "NewSale" => "sale", "WeeklyAccountantReport" => "report", _ => "monthly" };
+    private string LocalizedTitle(string title)
+    {
+        const string prefix = "Fechamento mensal - ";
+        if (!title.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return Text[title];
+        var period = title[prefix.Length..];
+        if (!DateTime.TryParse(period, new CultureInfo("pt-BR"), DateTimeStyles.None, out var date))
+            return $"{Text["Fechamento mensal"]} - {period}";
+        var formattedPeriod = Text.CurrentCulture.Name switch
+        {
+            "en-US" => date.ToString("MMMM yyyy", CultureInfo.CurrentCulture),
+            "es-ES" => date.ToString("MMMM 'de' yyyy", CultureInfo.CurrentCulture),
+            _ => date.ToString("MMMM 'de' yyyy", CultureInfo.CurrentCulture)
+        };
+        return $"{Text["Fechamento mensal"]} - {formattedPeriod}";
+    }
+    private string RelativeTime(DateTimeOffset date)
+    {
+        var elapsed = DateTimeOffset.Now - date.ToLocalTime();
+        if (elapsed.TotalMinutes < 1) return Text["Agora"];
+        if (elapsed.TotalHours < 1) return $"{Text["Ha"]} {(int)elapsed.TotalMinutes} {Text["min"]}";
+        if (elapsed.TotalDays < 1) return $"{Text["Ha"]} {(int)elapsed.TotalHours} {Text["h"]}";
+        return date.ToLocalTime().ToString("dd/MM/yyyy 'as' HH:mm");
+    }
+}
